@@ -1,0 +1,85 @@
+\section{Coloring and highlighting}
+%<-------------------------------------------------------------------------->
+\subsection{Coloring vertices: \tkzcname{AddVertexColor}}
+\begin{NewMacroBox}{AddVertexColor}{\var{color}\var{list of vertices}}
+\emph{The vertices of the list, already drawn, are drawn again with this
+color as fill color (and without label). The style \tkzname{Welsh} is
+designed for this use.}
+\end{NewMacroBox}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \GraphInit[vstyle=Welsh]
+  \tkzSetUpGraph[vertex line width=2pt]
+  \Vertices[unit=2]{circle}{A,B,C,D,E,F,G}
+  \SetVertexNoLabel
+  \AddVertexColor{red}{B,F}
+  \AddVertexColor{blue}{E,A}
+  \AddVertexColor{green}{C,G}
+  \AddVertexColor{yellow}{D}
+  \Edges(G,E,F,G,B,D,E,C,D,A,C,B,A)
+  \Edges(B,E)
+\end{tikzpicture}
+\end{tkzexample}
+
+A complete example (the Welsh--Powell algorithm) is given in the
+section~\ref{sec:welsh}.
+
+\subsection{Highlighting a path: \tkzcname{tkzHighlightPath}}
+\begin{NewMacroBox}{tkzHighlightPath}{\oarg{local options}\var{list}}
+\begin{tabular}{llc}
+\toprule
+Options   & Default  & Definition           \\
+\midrule
+\TOline{color} {red}   {color of the path}
+\TOline{lw}    {1.6pt} {line width}
+\TOline{style} {\{\}}  {\TIKZ\ options (to follow a bent edge\dots)}
+\TOline{cycle} {false} {the last vertex is joined to the first one}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{The list is a path \tkzname{A,B,C,D} (the edges A--B, B--C, C--D are
+drawn again) or a list of edges \tkzname{A/B,C/D}. The vertices must exist;
+the edges are drawn over the graph, so the macro is used at the end of the
+picture. With \tkzname{tkz-berge}, it highlights the edges of a graph drawn by
+a single macro.}
+\end{NewMacroBox}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}[scale=.6]
+  \GraphInit[vstyle=Normal]
+  \SetVertexNoLabel
+  \grPetersen[RA=3,RB=1.5]
+  \tkzHighlightPath[cycle]{a0,a1,a2,a3,a4}
+  \tkzHighlightPath[color=blue]{a0/b0,b2/b4}
+\end{tikzpicture}
+\end{tkzexample}
+
+A bent edge needs the same \tkzname{style}:
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \Vertices[unit=1.5]{line}{A,B,C}
+  \Edge[style={bend left=30}](A)(C)
+  \Edges(A,B,C)
+  \tkzHighlightPath[color=orange,lw=2.5pt,
+     style={bend left=30}]{A,C}
+\end{tikzpicture}
+\end{tkzexample}
+
+\subsubsection{A Hamiltonian cycle of the cube: the Gray code}
+With \tkzname{tkz-berge}, \tkzcname{grHypercube} names the vertices of the
+cube by their binary word; a Hamiltonian cycle gives the Gray code.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}[scale=.8]
+  \GraphInit[vstyle=Normal]
+  \tkzSetUpGraph[medium size=20pt]
+  \grHypercube[RA=3.5,prefix={}]{3}
+  \tkzHighlightPath[cycle]%
+    {000,001,011,010,110,111,101,100}
+\end{tikzpicture}
+\end{tkzexample}
+
+\endinput

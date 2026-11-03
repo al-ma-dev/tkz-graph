@@ -1,0 +1,28 @@
+% test-noms-courts.tex -- tkz-graph 2.2 : noms courts et conflits
+\documentclass{article}
+\newcommand\NO{\textbf{non}}           % défini AVANT tkz-graph : avertissement
+\usepackage{tkz-graph}
+\usepackage{tkz-berge}
+\let\EA\expandafter                     % redéfini APRÈS tkz-graph
+\def\Edge{EDGE}
+\begin{document}
+Hors dessin : \NO, \Edge, \EA\def\csname essai\endcsname{ok}\essai.
+
+\begin{tikzpicture}            % dans le dessin : commandes de tkz-graph
+  \GraphInit[vstyle=Normal]
+  \Vertex{A}\EA(A){B}\NO(B){C}\NOWE(A){D}
+  \Edges(A,B,C)\Edge(A)(D)\Loop[dir=SO,dist=2cm](D)
+\end{tikzpicture}
+\begin{tikzpicture}            % tkz-berge n'utilise pas les noms courts
+  \grPetersen[RA=2,RB=1]
+\end{tikzpicture}
+\begin{tikzpicture}            % noms préfixés
+  \tkzVertex{X}\tkzEA(X){Y}\tkzEdge(X)(Y)
+\end{tikzpicture}
+
+Après : \NO, \Edge.
+\tkzDefGraphStyle{Rouge}{\GraphInit[vstyle=Normal]\SetGraphColor{red!20}{red}}
+\begin{tikzpicture}
+  \GraphInit[vstyle=rouge]\Vertices{circle}{a,b,c,d}\Edges(a,b,c,d,a)
+\end{tikzpicture}
+\end{document}

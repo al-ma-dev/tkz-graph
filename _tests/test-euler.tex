@@ -1,0 +1,46 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage[lua]{tkz-graph}
+\begin{document}
+\begin{tikzpicture}
+  \SetGraphUnit{4}
+  \Vertex{F}
+  \NOEA(F){B} \SOEA(F){E}
+  \EA(B){C}   \EA(E){D}
+  \NO(D){A}
+  \Edges(B,F,E,D,A,E,B,A,F,B,C,F,D)
+  \tkzGraphEuler[numbers]
+\end{tikzpicture}
+
+type \tkzGraphEulerType; odd \tkzGraphOddVertices; path \tkzGraphEulerPath;
+\tkzGraphIfEulerian{cycle}{path}{none}; comps \tkzGraphComponents; \tkzGraphIfConnected{connected}{not}.
+
+\begin{tikzpicture}
+  \SetGraphUnit{3}
+  \Vertex{N} \SO(N){I} \SO(I){S} \EA(I){E}
+  \Edge[style={bend left}](N)(I) \Edge[style={bend right}](N)(I)
+  \Edge[style={bend left}](S)(I) \Edge[style={bend right}](S)(I)
+  \Edge(N)(E)\Edge(I)(E)\Edge(S)(E)
+  \tkzGraphEuler[numbers,pos=.4]
+\end{tikzpicture}
+Königsberg: \tkzGraphEulerType, odd \tkzGraphOddVertices[, ].
+
+\begin{tikzpicture}
+  \Vertices[unit=2]{circle}{A,B,C,D}
+  \Edges(A,B,C,D,A) \Edge(A)(C) \Edge(B)(D)\Edge(A)(C)\Edge(B)(D)
+  \Loop[dir=EA,dist=1.5cm](A)
+  \tkzGraphEuler[numbers,start=C]
+\end{tikzpicture}
+cycle? \tkzGraphEulerType: \tkzGraphEulerPath
+
+\begin{tikzpicture}
+  \tkzGraphFromMatrix[directed]{A,B,C,D,E}{0,1,1,1,0;1,0,1,0,1;1,1,0,0,1;0,1,0,0,1;1,1,0,1,0}
+  \tkzGraphEuler[numbers,pos=.3]
+\end{tikzpicture}
+directed: \tkzGraphEulerType\ \tkzGraphEulerPath
+
+$M^3=\tkzGraphMatrixPower[directed]{3}$, walks A$\to$B length 3: \tkzGraphWalks[directed]{3}(A)(B)
+
+\begin{tikzpicture}\Vertex{A}\Vertex[x=2]{B}\Vertex[x=4]{C}\Edge(A)(B)\end{tikzpicture}
+\tkzGraphComponents, \tkzGraphIfConnected{yes}{no}, \tkzGraphEulerType
+\end{document}

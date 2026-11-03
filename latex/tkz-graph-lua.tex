@@ -1,0 +1,225 @@
+% tkz-graph-lua.tex -- part of tkz-graph : option lua
+% Copyright 2026  Alain Matthes
+% SPDX-License-Identifier: LPPL-1.3c
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3c
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   https://www.latex-project.org/lppl.txt
+% and version 1.3c or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status "maintained".
+%
+% The Current Maintainer of this work is Alain Matthes.
+%
+% Read once by \tkzgr@loadlua (tkz-graph.sty), with the option lua
+% (\usepackage[lua]{tkz-graph} or \usepackage[lua]{tkz-berge}), LuaLaTeX
+% only : computations on the graph drawn in the current tikzpicture
+% (degrees, Dijkstra, Welsh-Powell, Euler...). Lua part : tkz-graph.lua.
+% Not a package.
+% the Lua file is searched as a Lua file, then as a TeX file
+\def\tkzgl@nolua{\PackageError{tkz-graph}{File tkz-graph.lua not found}%
+  {Install tkz-graph.lua next to tkz-graph.sty.}\endinput}
+\directlua{
+  local f = kpse.find_file("tkz-graph.lua", "lua")
+            or kpse.find_file("tkz-graph.lua", "tex")
+  if f then tkzgraph = dofile(f) end}
+\directlua{if not tkzgraph then tex.sprint("\string\\tkzgl@nolua") end}
+%<--------------------------------------------------------------------------->
+%                     Recording of the graph in Lua
+%<--------------------------------------------------------------------------->
+\def\tkzgl@str#1{\luaescapestring{\detokenize\expandafter{#1}}}
+\def\tkzgr@hook@reset{\directlua{tkzgraph.reset()}}
+\def\tkzgr@hook@vertex#1{%
+  \directlua{tkzgraph.vertex("\luaescapestring{#1}")}}
+% the label, the arrow and the style may be macros that contain macros
+% (\SetUpEdge) : they are expanded (protected) before being sent to Lua
+\def\tkzgr@hook@edge#1#2#3#4{%
+  \begingroup
+  \protected@edef\tkzgl@l{#3}%
+  \protected@edef\tkzgl@a{#4}%
+  \ifdefined\cmdGR@edge@style
+    \protected@edef\tkzgl@s{\cmdGR@edge@style}%
+  \else
+    \let\tkzgl@s\@empty
+  \fi
+  \directlua{tkzgraph.edge("\luaescapestring{#1}", "\luaescapestring{#2}",
+     "\tkzgl@str{\tkzgl@l}", "\tkzgl@str{\tkzgl@a}", "\tkzgl@str{\tkzgl@s}")}%
+  \endgroup}
+\directlua{tkzgraph.reset()}
+%<--------------------------------------------------------------------------->
+%                               Texts
+%<--------------------------------------------------------------------------->
+\newcommand*{\tkzGraphVertexText}{Vertex}
+\newcommand*{\tkzGraphDegreeText}{Degree}
+\newcommand*{\tkzGraphColorText}{Color}
+\newcommand*{\tkzGraphChoiceText}{Choice}
+\newcommand*{\tkzGraphDoneMark}{\rule[-.2ex]{.8em}{1.6ex}}
+\newcommand*{\tkzGraphColorSwatch}[1]{%
+  \textcolor{#1}{\rule[-.2ex]{1.2em}{1.6ex}}\,\texttt{#1}}
+% rules of the tables : booktabs if loaded
+\let\tkzgl@top\hline \let\tkzgl@mid\hline \let\tkzgl@bot\hline
+\AtBeginDocument{%
+  \ifdefined\toprule
+    \let\tkzgl@top\toprule \let\tkzgl@mid\midrule \let\tkzgl@bot\bottomrule
+  \fi}
+%<--------------------------------------------------------------------------->
+%                         Order, size, degrees
+%<--------------------------------------------------------------------------->
+\newcommand*{\tkzGraphOrder}{\directlua{tkzgraph.order()}}
+\newcommand*{\tkzGraphSize}{\directlua{tkzgraph.size()}}
+\newcommand*{\tkzGraphDegree}[1]{%
+  \directlua{tkzgraph.degree("\luaescapestring{#1}", "all")}}
+\newcommand*{\tkzGraphInDegree}[1]{%
+  \directlua{tkzgraph.degree("\luaescapestring{#1}", "in")}}
+\newcommand*{\tkzGraphOutDegree}[1]{%
+  \directlua{tkzgraph.degree("\luaescapestring{#1}", "out")}}
+\newcommand*{\tkzGraphDegreeSequence}[1][, ]{%
+  \directlua{tkzgraph.degree_sequence("\luaescapestring{#1}")}}
+% tables : math (names in math mode), sort (degree table)
+\tkzgr@boolkey{ltab}{math}
+\tkzgr@boolkey{ltab}{sort}
+\tkzgr@presetkeys{ltab}{math = false, sort = true}
+\def\tkzgl@bool#1{\csname ifGR@#1\endcsname true\else false\fi}
+\newcommand*{\tkzGraphDegreeTable}[1][]{%
+  \begingroup
+  \tkzgr@setkeys{ltab}{#1}%
+  \directlua{tkzgraph.degree_table(\tkzgl@bool{ltab@sort},
+                                   \tkzgl@bool{ltab@math})}%
+  \endgroup}
+%<--------------------------------------------------------------------------->
+%                               Dijkstra
+%<--------------------------------------------------------------------------->
+% \tkzGraphDijkstra[options](A)(B) : shortest path from A to B, drawn
+% again over the edges. Edges without arrow are two-way (directed : from
+% the first vertex to the second). The weight of an edge is its label
+% when it is a number, otherwise 1.
+\tkzgr@cmdkey{dij}{color}
+\tkzgr@cmdkey{dij}{lw}
+\tkzgr@cmdkey{dij}{style}
+\tkzgr@boolkey{dij}{draw}
+\tkzgr@boolkey{dij}{directed}
+\tkzgr@presetkeys{dij}{color    = red,
+                       lw       = 1.6pt,
+                       style    = {},
+                       draw     = true,
+                       directed = false}
+\newcommand*{\tkzGraphPath}{}
+\newcommand*{\tkzGraphPathLength}{}
+\newcommand*{\tkzGraphDijkstra}[1][]{\tkzgl@dijkstra[#1]}
+\def\tkzgl@dijkstra[#1](#2)(#3){%
+  \begingroup
+  \tkzgr@setkeys{dij}{#1}%
+  \directlua{tkzgraph.dijkstra("\luaescapestring{#2}",
+     "\luaescapestring{#3}", \tkzgl@bool{dij@directed})}%
+  \ifGR@dij@draw
+    \edef\tkzgl@opts{color = \cmdGR@dij@color, line width = \cmdGR@dij@lw,
+                     \unexpanded\expandafter{\cmdGR@dij@style}}%
+    \directlua{tkzgraph.draw_path("\tkzgl@str{\tkzgl@opts}")}%
+  \fi
+  \endgroup}
+\newcommand*{\tkzGraphDijkstraTable}[1][]{%
+  \begingroup
+  \tkzgr@setkeys{ltab}{#1}%
+  \directlua{tkzgraph.dijkstra_table(\tkzgl@bool{ltab@math})}%
+  \endgroup}
+%<--------------------------------------------------------------------------->
+%                        Welsh-Powell coloring
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{col}{colors}
+\tkzgr@boolkey{col}{draw}
+\tkzgr@presetkeys{col}{colors = {red,blue,green,yellow,orange,cyan,
+                                 magenta,brown,lime,pink,teal,violet},
+                       draw   = true}
+\newcommand*{\tkzGraphColorCount}{}
+\newcommand*{\tkzGraphColoring}[1][]{%
+  \begingroup
+  \tkzgr@setkeys{col}{#1}%
+  \directlua{tkzgraph.coloring("\luaescapestring{\cmdGR@col@colors}")}%
+  \ifGR@col@draw
+    \directlua{tkzgraph.draw_coloring("\luaescapestring{\string\tkzgl@class}")}%
+  \fi
+  \endgroup}
+% one class : vertices drawn again with the color (fill, and ball color
+% for the shaded styles). A label inside the vertex is written again ; a
+% label outside (LabelOut) is still there and is not drawn again.
+\def\tkzgl@class#1#2{%
+  \begingroup
+  \tikzset{VertexStyle/.append style = {fill = #1, ball color = #1}}%
+  \tkzgr@setkeys{vertex}{}%
+  \foreach \tkzgl@v in {#2}{%
+    \ifGR@vertex@LabelOut
+      \tkzgr@Vertex[Node,NoLabel]{\tkzgl@v}%
+    \else
+      \tkzgr@Vertex[Node]{\tkzgl@v}%
+    \fi}%
+  \endgroup}
+\newcommand*{\tkzGraphVertexColor}[1]{%
+  \directlua{tkzgraph.vertex_color("\luaescapestring{#1}")}}
+\newcommand*{\tkzGraphColoringTable}[1][]{%
+  \begingroup
+  \tkzgr@setkeys{ltab}{#1}%
+  \directlua{tkzgraph.coloring_table(\tkzgl@bool{ltab@math})}%
+  \endgroup}
+%<--------------------------------------------------------------------------->
+%                         Connectivity, Euler
+%<--------------------------------------------------------------------------->
+\long\def\tkzgl@firstofthree#1#2#3{#1}
+\long\def\tkzgl@secondofthree#1#2#3{#2}
+\long\def\tkzgl@thirdofthree#1#2#3{#3}
+\newcommand*{\tkzGraphComponents}{\directlua{tkzgraph.components()}}
+\newcommand{\tkzGraphIfConnected}{\directlua{tkzgraph.if_connected()}}
+\newcommand*{\tkzGraphOddVertices}[1][,]{%
+  \directlua{tkzgraph.odd_vertices("\luaescapestring{#1}")}}
+\newcommand*{\tkzGraphEulerType}{\directlua{tkzgraph.euler_type()}}
+\newcommand{\tkzGraphIfEulerian}{\directlua{tkzgraph.if_eulerian()}}
+% \tkzGraphEuler[options] : an Eulerian path or cycle (Hierholzer)
+%   start    first vertex (for a path : one of the two odd vertices)
+%   directed the edges go from the first vertex to the second (by
+%            default : directed when all the edges have an arrow)
+%   numbers  the rank of each edge is written on it (EulerNumberStyle)
+%   pos      position of the numbers on the edges
+\tkzgr@cmdkey{eul}{start}
+\tkzgr@cmdkey{eul}{pos}
+\tkzgr@boolkey{eul}{directed}
+\tkzgr@boolkey{eul}{numbers}
+\tkzgr@presetkeys{eul}{start    = {},
+                       pos      = .5,
+                       directed = false,
+                       numbers  = false}
+\tikzset{EulerNumberStyle/.style = {circle, draw, fill = white,
+                                    inner sep = 1pt, font = \scriptsize}}
+\newcommand*{\tkzGraphEulerPath}{}
+\newcommand*{\tkzGraphEuler}[1][]{%
+  \begingroup
+  \tkzgr@setkeys{eul}{#1}%
+  \directlua{tkzgraph.euler("\luaescapestring{\cmdGR@eul@start}",
+                            \tkzgl@bool{eul@directed})}%
+  \ifGR@eul@numbers
+    \directlua{tkzgraph.draw_euler("\luaescapestring{\cmdGR@eul@pos}")}%
+  \fi
+  \endgroup}
+%<--------------------------------------------------------------------------->
+%                     Powers of the adjacency matrix
+%<--------------------------------------------------------------------------->
+% \tkzGraphMatrixPower[directed,order={A,B,...}]{k}  M^k
+% \tkzGraphWalks[directed]{k}(A)(B)  number of walks of length k
+% same rules as \tkzAdjacencyMatrix
+\tkzgr@boolkey{pow}{directed}
+\tkzgr@cmdkey{pow}{order}
+\tkzgr@presetkeys{pow}{directed = false, order = {}}
+\newcommand*{\tkzGraphMatrixPower}[2][]{%
+  \begingroup
+  \tkzgr@setkeys{pow}{#1}%
+  \directlua{tkzgraph.matrix_power("\luaescapestring{#2}",
+     \tkzgl@bool{pow@directed}, "\luaescapestring{\cmdGR@pow@order}")}%
+  \endgroup}
+\newcommand*{\tkzGraphWalks}[2][]{\tkzgl@walks{#1}{#2}}
+\def\tkzgl@walks#1#2(#3)(#4){%
+  \begingroup
+  \tkzgr@setkeys{pow}{#1}%
+  \directlua{tkzgraph.walks("\luaescapestring{#2}", "\luaescapestring{#3}",
+     "\luaescapestring{#4}", \tkzgl@bool{pow@directed})}%
+  \endgroup}
+\endinput

@@ -1,0 +1,63 @@
+\documentclass{article}
+\usepackage{booktabs}
+\usepackage[lua]{tkz-berge}
+\begin{document}
+\begin{tikzpicture}
+  \GraphInit[vstyle=Welsh]
+  \Vertices[unit=2.5]{circle}{A,B,C,D,E,F,G}
+  \Edges(G,E,F,G,B,D,E,C,D,A,C,B,A) \Edges(B,E)
+  \tkzGraphColoring
+\end{tikzpicture}
+
+Order \tkzGraphOrder, size \tkzGraphSize, degree of B: \tkzGraphDegree{B};
+sequence \tkzGraphDegreeSequence; colors \tkzGraphColorCount; B is \tkzGraphVertexColor{B}.
+
+\tkzGraphColoringTable[math]\quad \tkzGraphDegreeTable[sort=false]
+
+\begin{tikzpicture}
+  \GraphInit[vstyle=Dijkstra]
+  \Vertex{E}
+  \Vertex[x=3,y=2]{A}  \Vertex[x=3,y=-2]{B}
+  \Vertex[x=7,y=-2]{C} \Vertex[x=7,y=2]{D}
+  \Vertex[x=10,y=0]{S}
+  \Edge[label=$3$](E)(A)
+  \Edge[label=$1$](E)(B)
+  \Edge[label=$1$](A)(B)
+  \Edge[label=$3$](B)(C)
+  \Edge[label=$3$,style={pos=.25}](A)(C)
+  \Edge[label=$5$,style={pos=.75}](B)(D)
+  \Edge[label=$4$](A)(D)
+  \Edge[label=$1$](S)(D)
+  \Edge[label=$3$](C)(S)
+  \Edge[label=$1$](C)(D)
+  \tkzGraphDijkstra[style={opacity=.4}](E)(S)
+\end{tikzpicture}
+
+Path \tkzGraphPath, length $\tkzGraphPathLength$.
+
+\tkzGraphDijkstraTable[math]
+
+\begin{tikzpicture}
+  \grProbMatrix[unit=2,rotation=90]{A,B,C}{0.5,0.3,0.2;0.1,0.6,0.3;0.4,0,0.6}
+  \tkzGraphDijkstra(A)(C)
+\end{tikzpicture}
+Path \tkzGraphPath, length $\tkzGraphPathLength$, out-degree of C \tkzGraphOutDegree{C}, in \tkzGraphInDegree{C}.
+
+\begin{tikzpicture}[scale=.6]
+  \GraphInit[vstyle=Art]
+  \grPetersen[RA=2.5,RB=1.2]
+  \tkzGraphColoring
+\end{tikzpicture}
+Petersen: \tkzGraphOrder\ vertices, \tkzGraphSize\ edges, \tkzGraphDegreeSequence, \tkzGraphColorCount\ colors.
+
+\begin{tikzpicture}
+  \SetGraphUnit{2}
+  \Vertices{line}{A,B,C,D}
+  \Edge[->,label=$0{,}5$](A)(B)
+  \Edge[<-,label=$\frac{1}{2}$](C)(B)
+  \Edge[style={->,bend left},label=$2$](A)(D)
+  \Edge[label=$1$](C)(D)
+  \tkzGraphDijkstra[directed](A)(D)
+\end{tikzpicture}
+Path \tkzGraphPath, length $\tkzGraphPathLength$.
+\end{document}

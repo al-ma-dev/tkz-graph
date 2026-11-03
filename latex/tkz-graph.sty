@@ -1,0 +1,1473 @@
+% tkz-graph.sty -- graphs of graph theory with TikZ
+% Copyright 2007-2026  Alain Matthes
+% SPDX-License-Identifier: LPPL-1.3c
+% Maintainer: Alain Matthes
+
+%<--------------------------------------------------------------------------->
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{tkz-graph}[2026/11/02 v2.30c base for graphs]
+%<--------------------------------------------------------------------------->
+\newif\iftkzgr@short
+\tkzgr@shorttrue
+\DeclareOption{noshortnames}{\tkzgr@shortfalse}
+% options lua and 3d (LuaLaTeX only) : the files tkz-graph-lua.tex
+% (computations) and tkz-graph-3d.tex (graphs in space with tkz-elements),
+% read at the end of the package
+\newif\iftkzgr@lua
+\newif\iftkzgr@threed
+\DeclareOption{lua}{\tkzgr@luatrue}
+\DeclareOption{3d}{\tkzgr@luatrue\tkzgr@threedtrue}
+\DeclareOption{3D}{\tkzgr@luatrue\tkzgr@threedtrue}
+\ProcessOptions\relax
+% ifthen is no longer used by tkz-graph ; it is still loaded for the
+% documents (and tkz-berge) that use \ifthenelse without loading it
+\RequirePackage{ifthen}
+\RequirePackage{tikz}
+\usetikzlibrary{arrows}
+%<--------------------------------------------------------------------------->
+%            Keys : a small layer on pgfkeys (replaces xkeyval)
+%<--------------------------------------------------------------------------->
+% All the keys live in /tkzgraph/<family>/<key>. The macros below
+% reproduce the xkeyval commands used before 2.1 :
+%  \tkzgr@cmdkey{fam}{key}          \define@cmdkey[GR]{fam}{key}{}
+%  \tkzgr@cmdkeydef{fam}{key}{def}  \define@cmdkey[GR]{fam}{key}[def]{}
+%  \tkzgr@boolkey{fam}{key}         \define@boolkey[GR]{fam}{key}[true]{}
+%  \tkzgr@choicekey{fam}{key}{list}{code}
+%                                   \define@choicekey*[GR]{fam}{key}[\val\nr]
+%                                                     {list}{code}
+%  \tkzgr@presetkeys{fam}{k=v,...}  \presetkeys[GR]{fam}{k=v,...}{}
+%  \tkzgr@setkeys{fam}{k=v,...}     \setkeys[GR]{fam}{k=v,...}
+% A key "key" of the family "fam" stores its value in \cmdGR@fam@key
+% (or sets the boolean \ifGR@fam@key), as xkeyval did.
+%<--------------------------------------------------------------------------->
+\def\tkzgr@cmdkey#1#2{%
+  \expandafter\tkzgr@cmdkey@\csname cmdGR@#1@#2\endcsname{#1}{#2}}
+\def\tkzgr@cmdkey@#1#2#3{\pgfkeys{/tkzgraph/#2/#3/.store in=#1}}
+\def\tkzgr@cmdkeydef#1#2#3{%
+  \tkzgr@cmdkey{#1}{#2}%
+  \pgfkeys{/tkzgraph/#1/#2/.default={#3}}}
+\def\tkzgr@boolkey#1#2{%
+  \expandafter\newif\csname ifGR@#1@#2\endcsname
+  \pgfkeys{/tkzgraph/#1/#2/.is if  = GR@#1@#2,
+           /tkzgraph/#1/#2/.default = true}}
+%<--------------------------------------------------------------------------->
+% choice keys : the value is compared without case ; \val is the value
+% found in the list, \nr its rank (0,1,...) ; then <code> is executed
+\def\tkzgr@choicekey#1#2#3#4{%
+  \expandafter\def\csname tkzgr@cl@#1@#2\endcsname{#3}%
+  \expandafter\def\csname tkzgr@cc@#1@#2\endcsname{#4}%
+  \pgfkeys{/tkzgraph/#1/#2/.code={\tkzgr@dochoice{#1}{#2}{##1}}}}
+\def\tkzgr@dochoice#1#2#3{%
+  \edef\tkzgr@cv{#3}%
+  \tkzgr@lowercase\tkzgr@cv
+  \def\nr{-1}%
+  \@tempcnta\z@
+  \expandafter\expandafter\expandafter\@for
+  \expandafter\expandafter\expandafter\tkzgr@c
+  \expandafter\expandafter\expandafter:%
+  \expandafter\expandafter\expandafter=%
+  \csname tkzgr@cl@#1@#2\endcsname\do{%
+    \let\tkzgr@lc\tkzgr@c
+    \tkzgr@lowercase\tkzgr@lc
+    \ifx\tkzgr@lc\tkzgr@cv
+      \edef\nr{\the\@tempcnta}%
+      \let\val\tkzgr@c
+    \fi
+    \advance\@tempcnta\@ne}%
+  \ifnum\nr<\z@
+    \PackageError{tkz-graph}{Value `#3' is not allowed for the key `#2'}%
+      {Allowed values: \csname tkzgr@cl@#1@#2\endcsname}%
+  \else
+    \csname tkzgr@cc@#1@#2\endcsname
+  \fi}
+\def\tkzgr@lowercase#1{%
+  \lowercase\expandafter{\expandafter\def\expandafter#1\expandafter{#1}}}
+%<--------------------------------------------------------------------------->
+% preset values : list of the names in \tkzgr@pl@<fam> (order of the
+% first preset) and value of each key in \tkzgr@pv@<fam>@<key>.
+% As with \presetkeys : a new value replaces the old one, local
+% definitions (a group limits the change).
+\def\tkzgr@novalue{\pgfkeysnovalue}
+\pgfkeys{/tkzgraph/@preset/.unknown/.code = {\tkzgr@addpreset{#1}}}
+\def\tkzgr@presetkeys#1#2{%
+  \def\tkzgr@pfam{#1}%
+  \pgfqkeys{/tkzgraph/@preset}{#2}}
+\def\tkzgr@addpreset#1{%
+  \edef\tkzgr@k{\pgfkeyscurrentname}%
+  \expandafter\ifx\csname tkzgr@pl@\tkzgr@pfam\endcsname\relax
+    \expandafter\let\csname tkzgr@pl@\tkzgr@pfam\endcsname\@empty
+  \fi
+  \edef\tkzgr@tmp{\noexpand\in@{,\tkzgr@k,}%
+                  {,\csname tkzgr@pl@\tkzgr@pfam\endcsname,}}%
+  \tkzgr@tmp
+  \ifin@\else
+    \expandafter\edef\csname tkzgr@pl@\tkzgr@pfam\endcsname{%
+      \csname tkzgr@pl@\tkzgr@pfam\endcsname,\tkzgr@k}%
+  \fi
+  \expandafter\def\csname tkzgr@pv@\tkzgr@pfam @\tkzgr@k\endcsname{#1}}
+%<--------------------------------------------------------------------------->
+% \tkzgr@setkeys{fam}{list} : 1) the preset values of the keys absent
+% from list, 2) list.
+\pgfkeys{/tkzgraph/@mark/.unknown/.code = {%
+  \edef\tkzgr@given{\tkzgr@given\pgfkeyscurrentname,}}}
+\def\tkzgr@setkeys#1#2{%
+  \def\tkzgr@given{,}%
+  \pgfqkeys{/tkzgraph/@mark}{#2}%
+  \let\tkzgr@todo\@empty
+  \expandafter\let\expandafter\tkzgr@list\csname tkzgr@pl@#1\endcsname
+  \ifx\tkzgr@list\relax\let\tkzgr@list\@empty\fi
+  \@for\tkzgr@k:=\tkzgr@list\do{%
+    \ifx\tkzgr@k\@empty\else
+      \edef\tkzgr@tmp{\noexpand\in@{,\tkzgr@k,}{\tkzgr@given}}%
+      \tkzgr@tmp
+      \ifin@\else
+        \expandafter\let\expandafter\tkzgr@v
+          \csname tkzgr@pv@#1@\tkzgr@k\endcsname
+        \ifx\tkzgr@v\tkzgr@novalue
+          \edef\tkzgr@todo{\unexpanded\expandafter{\tkzgr@todo}\tkzgr@k,}%
+        \else
+          \edef\tkzgr@todo{\unexpanded\expandafter{\tkzgr@todo}%
+            \tkzgr@k={\unexpanded\expandafter{\tkzgr@v}},}%
+        \fi
+      \fi
+    \fi}%
+  \edef\tkzgr@tmp{\noexpand\pgfqkeys{/tkzgraph/#1}%
+                  {\unexpanded\expandafter{\tkzgr@todo}}}%
+  \tkzgr@tmp
+  \pgfqkeys{/tkzgraph/#1}{#2}}
+% \tkzgr@ifempty{<text>}{<if empty>}{<if not empty>}
+% (replaces \ifthenelse{\equal{<text>}{}}, same expansion)
+\def\tkzgr@ifempty#1{%
+  \protected@edef\tkzgr@tmpe{#1}%
+  \ifx\tkzgr@tmpe\@empty
+    \expandafter\@firstoftwo
+  \else
+    \expandafter\@secondoftwo
+  \fi}
+%<--------------------------------------------------------------------------->
+% counters used by tkz-berge
+\newcounter{tkz@gr@a}
+\newcounter{tkz@gr@b}
+\newcounter{tkz@gr@c}
+\newcounter{tkz@gr@e}
+\newcounter{tkz@gr@d}
+\newcounter{tkz@gr@p}
+\newcounter{tkz@gr@i}
+\newcounter{tkz@gr@n}
+\newcounter{tkz@gr@ta}
+\newcounter{tkz@gr@tb}
+%<--------------------------------------------------------------------------->
+%                           Init vertex
+%<--------------------------------------------------------------------------->
+\def\tkz@gr@background@color{white}
+\def\tkz@gr@text@color{black}
+\global\edef\tkz@suc@bkc{\tkz@gr@background@color}
+\global\edef\tkz@suc@txt{\tkz@gr@text@color}
+\pgfkeys{
+/tkzsupcol/.cd,
+  background/.code    = {\global\edef\tkz@suc@bkc{#1}},
+  text/.code          = {\global\edef\tkz@suc@txt{#1}},
+}
+\def\tkzSetUpColors{\pgfutil@ifnextchar[{\tkz@SetUpColors}{\tkz@SetUpColors[]}}
+\def\tkz@SetUpColors[#1]{%
+\begingroup
+\pgfkeys{%
+/tkzsupcol/.cd,
+  background  = \tkz@gr@background@color,
+  text        = \tkz@gr@text@color
+  }
+\pgfqkeys{/tkzsupcol}{#1}
+\pagecolor{\tkz@suc@bkc}
+\color{\tkz@suc@txt}
+\endgroup
+}
+
+\newcommand*{\GraphUnit}{1}
+\newcommand*{\VertexInnerSep}{2pt}
+\newcommand*{\VertexOuterSep}{0pt}
+\newcommand*{\VertexDistance}{3cm}
+\newcommand*{\VertexShape}{circle}
+\newcommand*{\VertexLineWidth}{0.5pt}
+\newcommand*{\VertexLineColor}{\tkz@suc@txt}
+\newcommand*{\VertexLightFillColor}{\tkz@suc@bkc}
+\newcommand*{\VertexDarkFillColor}{\tkz@suc@txt}
+\newcommand*{\VertexTextColor}{\tkz@suc@txt}
+\newcommand*{\VertexFillColor}{\tkz@suc@txt}
+\newcommand*{\VertexBallColor}{orange}
+\newcommand*{\VertexBigMinSize}{24pt}
+\newcommand*{\VertexInterMinSize}{18pt}
+\newcommand*{\VertexSmallMinSize}{12pt}
+\newcommand*{\EdgeFillColor}{orange}
+\newcommand*{\EdgeArtColor}{orange}
+\newcommand*{\EdgeColor}{\tkz@suc@txt}
+\newcommand*{\EdgeDoubleDistance}{1pt}
+\newcommand*{\EdgeLineWidth}{0.8pt}
+\newcommand*{\LabelTextColor}{\tkz@suc@txt}
+\newcommand*{\LabelFillColor}{\tkz@suc@bkc}
+
+\tikzset{pre/.style={<-,shorten <=1pt,>=stealth',semithick}}
+\tikzset{post/.style={->,shorten <=1pt,>=stealth',semithick}}
+%<--------------------------------------------------------------------------->
+%   Simple Vertex
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{SVS}{Shape}
+\tkzgr@cmdkey{SVS}{MinSize}
+\tkzgr@cmdkey{SVS}{LineWidth}
+\tkzgr@cmdkey{SVS}{LineColor}
+\tkzgr@cmdkey{SVS}{FillColor}
+\tkzgr@cmdkey{SVS}{InnerSep}
+\tkzgr@cmdkey{SVS}{OuterSep}
+\tkzgr@presetkeys{SVS}{Shape          = \VertexShape,
+                       MinSize        = \VertexSmallMinSize,
+                       LineWidth      = \VertexLineWidth,
+                       LineColor      = \VertexLineColor,
+                       InnerSep       = \VertexInnerSep,
+                       OuterSep       = \VertexOuterSep,
+                       FillColor      = \VertexFillColor}
+\newcommand*{\SetVertexSimple}[1][]{\tkzgr@SetVertexSimple[#1]}%
+\def\tkzgr@SetVertexSimple[#1]{%
+\tkzgr@setkeys{SVS}{#1}%
+\tkzgr@presetkeys{vertex}{NoLabel           = true}%
+\tikzset{VertexStyle/.style = {draw,
+                               shape          = \cmdGR@SVS@Shape,
+                               color          = \cmdGR@SVS@LineColor,
+                               fill           = \cmdGR@SVS@FillColor,
+                               inner sep      = \cmdGR@SVS@InnerSep,
+                               outer sep      = \cmdGR@SVS@OuterSep,
+                               minimum size   = \cmdGR@SVS@MinSize,
+                               line width     = \cmdGR@SVS@LineWidth}}
+\tikzset{EdgeStyle/.style   = {line width     = \EdgeLineWidth,
+                                                \EdgeColor}}
+\tikzset{LabelStyle/.style={}}}
+%<--------------------------------------------------------------------------->
+%   Shade Vertex
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{shade}{Shape}
+\tkzgr@cmdkey{shade}{MinSize}
+\tkzgr@cmdkey{shade}{LineWidth}
+\tkzgr@cmdkey{shade}{LineColor}
+\tkzgr@cmdkey{shade}{BallColor}
+\tkzgr@cmdkey{shade}{InnerSep}
+\tkzgr@cmdkey{shade}{OuterSep}
+\tkzgr@presetkeys{shade}{Shape          = \VertexShape,
+                         MinSize        = \VertexBigMinSize,
+                         LineWidth      = \VertexLineWidth,
+                         LineColor      = \VertexLineColor,
+                         InnerSep       = \VertexInnerSep,
+                         OuterSep       = \VertexOuterSep,
+                         BallColor      = \VertexBallColor}
+\newcommand*{\SetVertexShade}[1][]{\tkzgr@SetVertexShade[#1]}%
+\def\tkzgr@SetVertexShade[#1]{%
+\tkzgr@setkeys{shade}{#1}%
+\tkzgr@presetkeys{vertex}{NoLabel           = false}%
+\tikzset{VertexStyle/.style = {draw,
+                               shape          = \cmdGR@shade@Shape,
+                               ball color     = \cmdGR@shade@BallColor,
+                               inner sep      = \cmdGR@shade@InnerSep,
+                               outer sep      = \cmdGR@shade@OuterSep,
+                               minimum size   = \cmdGR@shade@MinSize,
+                               line width     = \VertexLineWidth}}
+\tikzset{EdgeStyle/.style   = {line width     = \EdgeLineWidth,
+                                                \EdgeColor,% color outside
+                               double          = \EdgeFillColor,% inside
+                               double distance = \EdgeDoubleDistance}}%
+\tikzset{LabelStyle/.style={}}}
+%<--------------------------------------------------------------------------->
+%   Art Vertex
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{art}{Shape}
+\tkzgr@cmdkey{art}{MinSize}
+\tkzgr@cmdkey{art}{LineWidth}
+\tkzgr@cmdkey{art}{LineColor}
+\tkzgr@cmdkey{art}{BallColor}
+\tkzgr@cmdkey{art}{InnerSep}
+\tkzgr@cmdkey{art}{OuterSep}
+\tkzgr@presetkeys{art}{Shape          = \VertexShape,
+                       MinSize        = \VertexSmallMinSize,
+                       LineWidth      = \VertexLineWidth,
+                       LineColor      = \VertexLineColor,
+                       InnerSep       = \VertexInnerSep,
+                       OuterSep       = \VertexOuterSep,
+                       BallColor      = \VertexBallColor}
+\newcommand*{\SetVertexArt}[1][]{\tkzgr@SetVertexArt[#1]}%
+\def\tkzgr@SetVertexArt[#1]{%
+\tkzgr@setkeys{art}{#1}%
+\tkzgr@presetkeys{vertex}{NoLabel               = true}%
+\tikzset{VertexStyle/.style = {draw,
+                               shape          = \cmdGR@art@Shape,
+                               ball color     = \cmdGR@art@BallColor,
+                               inner sep      = \cmdGR@art@InnerSep,
+                               outer sep      = \cmdGR@art@OuterSep,
+                               minimum size   = \cmdGR@art@MinSize,
+                               line width     = \VertexLineWidth}}
+\tikzset{EdgeStyle/.style   = {line width     = \EdgeLineWidth,
+                                                 \EdgeArtColor}}
+\tikzset{LabelStyle/.style  = {}}}
+%<--------------------------------------------------------------------------->
+%   Normal Vertex
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{SVN}{Shape}
+\tkzgr@cmdkey{SVN}{MinSize}
+\tkzgr@cmdkey{SVN}{LineWidth}
+\tkzgr@cmdkey{SVN}{LineColor}
+\tkzgr@cmdkey{SVN}{FillColor}
+\tkzgr@cmdkey{SVN}{TextColor}
+\tkzgr@cmdkey{SVN}{InnerSep}
+\tkzgr@cmdkey{SVN}{OuterSep}
+\tkzgr@presetkeys{SVN}{Shape              = \VertexShape,
+                       MinSize            = \VertexInterMinSize,
+                       LineWidth          = \VertexLineWidth,
+                       LineColor          = \VertexLineColor,
+                       FillColor          = \VertexLightFillColor,
+                       InnerSep           = \VertexInnerSep,
+                       OuterSep           = \VertexOuterSep,
+                       TextColor          = \VertexTextColor}
+\newcommand*{\SetVertexNormal}[1][]{\tkzgr@SetVertexNormal[#1]}%
+\def\tkzgr@SetVertexNormal[#1]{%
+\tkzgr@setkeys{SVN}{#1}%
+\tikzset{VertexStyle/.style = {shape          = \cmdGR@SVN@Shape,
+                               minimum size   = \cmdGR@SVN@MinSize,
+                               line width     = \cmdGR@SVN@LineWidth,
+                               color          = \cmdGR@SVN@LineColor,
+                               fill           = \cmdGR@SVN@FillColor,
+                               text           = \cmdGR@SVN@TextColor,
+                               inner sep      = \cmdGR@SVN@InnerSep,
+                               outer sep      = \cmdGR@SVN@OuterSep,
+                               draw}}
+\tikzset{EdgeStyle/.style   = {line width     = \EdgeLineWidth,
+                                                 \EdgeColor}}
+\tikzset{LabelStyle/.style={}}}
+\SetVertexNormal% default
+%<--------------------------------------------------------------------------->
+%                    Graph styles (key vstyle of \GraphInit)
+%<--------------------------------------------------------------------------->
+% Each style is the key /tkzgraph/vstyle/<name> (name in lower case).
+% \tkzDefGraphStyle{<name>}{<code>} defines (or redefines) a style ;
+% \GraphInit[vstyle=<name>] executes <code> ; the name is case
+% insensitive. Example :
+%  \tkzDefGraphStyle{Red}{\GraphInit[vstyle=Normal]\SetGraphColor{red!20}{red}}
+\newcommand{\tkzDefGraphStyle}[2]{%
+  \edef\tkzgr@cv{#1}%
+  \tkzgr@lowercase\tkzgr@cv
+  \pgfkeys{/tkzgraph/vstyle/\tkzgr@cv/.code={#2}}}
+\def\tkzgr@vstyle#1{%
+  \edef\tkzgr@cv{#1}%
+  \tkzgr@lowercase\tkzgr@cv
+  \pgfkeysifdefined{/tkzgraph/vstyle/\tkzgr@cv/.@cmd}%
+    {\pgfkeys{/tkzgraph/vstyle/\tkzgr@cv}}%
+    {\PackageError{tkz-graph}{Value `#1' is not allowed for the key
+       `vstyle'}{The styles are Empty, Hasse, Simple, Classic,
+       Normal, Shade, Dijkstra, Welsh, Art, Shade Art and the styles
+       defined with \string\tkzDefGraphStyle.}}}
+% the styles Empty, Hasse, Simple, Classic, Dijkstra and Welsh differ
+% only by these values :
+% #1 preset of the key vertex (label), #2 draw or nothing,
+% #3 fill, #4 outer sep, #5 minimum size
+\def\tkzgr@basicvstyle#1#2#3#4#5{%
+\tkzgr@presetkeys{vertex}{#1}%
+\tikzset{VertexStyle/.style = {#2shape     = \VertexShape,
+                               color          = \VertexLineColor,
+                               fill           = #3,
+                               inner sep      = \VertexInnerSep,
+                               outer sep      = #4,
+                               text           = \VertexTextColor,
+                               minimum size   = #5,
+                               line width     = \VertexLineWidth}}
+\tikzset{EdgeStyle/.style   = {line width     = \EdgeLineWidth,
+                                                \EdgeColor}}
+\tikzset{LabelStyle/.style={}}}
+\tkzDefGraphStyle{Empty}{%
+  \tkzgr@basicvstyle{LabelOut = false}{}{\VertexLightFillColor}%
+                    {0.5\pgflinewidth}{\VertexSmallMinSize}}
+\tkzDefGraphStyle{Hasse}{%
+  \tkzgr@basicvstyle{NoLabel = true}{draw,}{\VertexLightFillColor}%
+                    {0.5\pgflinewidth}{\VertexSmallMinSize}}
+\tkzDefGraphStyle{Simple}{%
+  \tkzgr@basicvstyle{NoLabel = true}{draw,}{\VertexDarkFillColor}%
+                    {0.5\pgflinewidth}{\VertexSmallMinSize}}
+\tkzDefGraphStyle{Classic}{%
+  \tkzgr@basicvstyle{LabelOut = true}{draw,}{\VertexDarkFillColor}%
+                    {0.5\pgflinewidth}{\VertexSmallMinSize}}
+\tkzDefGraphStyle{Dijkstra}{%
+  \tkzgr@basicvstyle{LabelOut = false}{draw,}{\VertexLightFillColor}%
+                    {0.5\pgflinewidth}{\VertexInterMinSize}}
+\tkzDefGraphStyle{Welsh}{%
+  \tkzgr@basicvstyle{LabelOut = true}{draw,}{\VertexLightFillColor}%
+                    {\VertexOuterSep}{\VertexSmallMinSize}}
+\tkzDefGraphStyle{Normal}{%
+\tkzgr@presetkeys{vertex}{LabelOut            = false}%
+\tikzset{VertexStyle/.style = {draw,
+                               shape           = \VertexShape,
+                               minimum size    = \VertexInterMinSize,
+                               line width      = \VertexLineWidth,
+                               color           = \VertexLineColor,
+                               outer sep       = 0.5\pgflinewidth,
+                               fill            = \VertexLightFillColor,
+                               text            = \VertexTextColor,
+                               line width      = \VertexLineWidth}}
+\tikzset{EdgeStyle/.style   = {line width      = \EdgeLineWidth,
+                                                 \EdgeColor}}
+\tikzset{LabelStyle/.style={}}}
+\tkzDefGraphStyle{Shade}{%
+\tkzgr@presetkeys{vertex}{LabelOut            = false}%
+\tikzset{VertexStyle/.style = {draw,
+                               shape           = \VertexShape,
+                               ball color      = \VertexBallColor,
+                               color           = \VertexLineColor,
+                               text            = \VertexTextColor,
+                               inner sep       = \VertexInnerSep,
+                               outer sep       = \VertexOuterSep,
+                               minimum size    = \VertexBigMinSize,
+                               line width      = \VertexLineWidth}}
+\tikzset{EdgeStyle/.style   = {line width      = \EdgeLineWidth,
+                                                 \EdgeColor,% color outside
+                               double          = \EdgeFillColor,% inside
+                               double distance = \EdgeDoubleDistance}}%
+\tikzset{LabelStyle/.style={}}}
+\tkzDefGraphStyle{Art}{%
+\tkzgr@presetkeys{vertex}{NoLabel            = true}%
+\tikzset{VertexStyle/.style = {shape          = \VertexShape,
+                               ball color     = \VertexBallColor,
+                               color          = \VertexLineColor,
+                               inner sep      = \VertexInnerSep,
+                               outer sep      = \VertexOuterSep,
+                               minimum size   = \VertexSmallMinSize,
+                               line width     = \VertexLineWidth}}%
+\tikzset{EdgeStyle/.style   = {line width      = \EdgeLineWidth,
+                                                 \EdgeArtColor}}
+\tikzset{LabelStyle/.style  = {}}}
+\tkzDefGraphStyle{Shade Art}{%
+\tkzgr@presetkeys{vertex}{NoLabel            = true}%
+\tikzset{VertexStyle/.style = {shape          = \VertexShape,
+                               ball color     = \VertexBallColor,
+                               inner sep      = \VertexInnerSep,
+                               outer sep      = \VertexOuterSep,
+                               minimum size   = \VertexSmallMinSize,
+                               line width     = \VertexLineWidth}}
+\tikzset{EdgeStyle/.style   = {line width      = \EdgeLineWidth,
+                                                 \EdgeColor,
+                               double          = \EdgeFillColor,
+                               double distance = .5\EdgeDoubleDistance}}
+\tikzset{LabelStyle/.style  = {}}}
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{init}{unit}
+\pgfkeys{/tkzgraph/init/vstyle/.code = {\tkzgr@vstyle{#1}}}
+\tkzgr@presetkeys{init}{vstyle     = Normal,%
+                        unit       = \GraphUnit}
+
+\newcommand*{\SetGraphUnit}[1]{\renewcommand{\GraphUnit}{#1}}%
+
+\newcommand*{\GraphInit}[1][]{\tkzgr@setkeys{init}{#1}%
+\edef\GraphUnit{\cmdGR@init@unit}%
+}%
+%<--------------------------------------------------------------------------->
+%                             Colors
+%<--------------------------------------------------------------------------->
+\newcommand*{\SetGraphShadeColor}[3]{%
+  \tikzset{VertexStyle/.append style = {ball color=#1}}
+  \tikzset{EdgeStyle/.append style   = {color=#2,double=#3}}
+}
+\newcommand*{\SetGraphArtColor}[2]{%
+  \tikzset{VertexStyle/.append style = {ball color=#1}}
+  \tikzset{EdgeStyle/.append style   = {color=#2}}
+}
+\newcommand*{\SetGraphColor}[2]{%
+  \tikzset{VertexStyle/.append style = {fill=#1}}
+  \tikzset{EdgeStyle/.append style   = {color=#2}}
+}
+\newcommand*{\AddVertexColor}[2]{%
+\begingroup
+  \tikzset{VertexStyle/.append style  = {fill=#1}}
+  \foreach \tkzgr@colv in {#2}
+    {\tkzgr@Vertex[Node,NoLabel]{\tkzgr@colv}}
+\endgroup
+}
+%<--------------------------------------------------------------------------->
+\newcommand*{\SetVertexNoLabel}{%
+    \tkzgr@presetkeys{vertex}{NoLabel = true}%
+}
+% add  RV
+\newcommand*{\SetVertexLabel}{%
+   \tkzgr@presetkeys{vertex}{NoLabel = false}%
+}
+%<--------------------------------------------------------------------------->
+\newcommand*{\SetVertexLabelOut}{%
+    \tkzgr@presetkeys{vertex}{LabelOut = true}%
+}
+\newcommand*{\SetVertexLabelIn}{%
+    \tkzgr@presetkeys{vertex}{LabelOut = false}%
+}
+\newcommand*{\SetVertexMath}{%
+    \tkzgr@presetkeys{vertex}{Math = true}%
+    \tkzgr@presetkeys{cl}{Math = true}%
+}
+\newcommand*{\SetVertexNoMath}{%
+    \tkzgr@presetkeys{vertex}{Math = false}%
+    \tkzgr@presetkeys{cl}{Math = false}%
+}
+%<--------------------------------------------------------------------------->
+%                          Init    SetUpVertex
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{SUV}{Lpos}
+\tkzgr@cmdkey{SUV}{Ldist}
+\tkzgr@cmdkey{SUV}{Style}
+\tkzgr@cmdkey{SUV}{MinSize}
+\tkzgr@cmdkey{SUV}{LineWidth}
+\tkzgr@cmdkey{SUV}{TextColor}
+\tkzgr@cmdkey{SUV}{LineColor}
+\tkzgr@cmdkey{SUV}{FillColor}
+\tkzgr@cmdkey{SUV}{InnerSep}
+\tkzgr@cmdkey{SUV}{OuterSep}
+\tkzgr@cmdkey{SUV}{Unit}
+\tkzgr@boolkey{SUV}{NoLabel}
+\tkzgr@boolkey{SUV}{LabelOut}
+\tkzgr@boolkey{SUV}{Math}
+\tkzgr@presetkeys{SUV}{Ldist     = 0cm,
+                       Lpos      = 0,
+                       Style     = {},
+                       LabelOut  = false,
+                       NoLabel   = false,
+                       Math      = false,
+                       Unit      = \GraphUnit,
+                       MinSize   = \VertexInterMinSize,
+                       TextColor = \VertexTextColor,
+                       LineColor = \VertexLineColor,
+                       FillColor = \VertexLightFillColor,
+                       LineWidth = \VertexLineWidth,
+                       InnerSep  = \VertexInnerSep,
+                       OuterSep  = \VertexOuterSep}
+%<--------------------------------------------------------------------------->
+%                             SetUpVertex
+%<--------------------------------------------------------------------------->
+\newcommand*{\SetUpVertex}[1][]{\tkzgr@SetUpVertex[#1]}%
+\def\tkzgr@SetUpVertex[#1]{%
+\tkzgr@setkeys{SUV}{#1}%
+\tkzgr@presetkeys{vertex}{Lpos     = \cmdGR@SUV@Lpos,
+                          Ldist    = \cmdGR@SUV@Ldist,
+                          style    = \cmdGR@SUV@Style,
+                          unit     = \cmdGR@SUV@Unit}%
+\tikzset{VertexStyle/.append style = {inner sep      = \cmdGR@SUV@InnerSep,
+                                      outer sep      = \cmdGR@SUV@OuterSep,
+                                      minimum size   = \cmdGR@SUV@MinSize,
+                                      text           = \cmdGR@SUV@TextColor,
+                                      color          = \cmdGR@SUV@LineColor,
+                                      fill           = \cmdGR@SUV@FillColor,
+                                      line width     = \cmdGR@SUV@LineWidth}}
+\ifGR@SUV@NoLabel%
+    \tkzgr@presetkeys{vertex}{NoLabel  = true}%
+\fi%
+\ifGR@SUV@LabelOut%
+    \tkzgr@presetkeys{vertex}{LabelOut = true}%
+\fi%
+\ifGR@SUV@Math%
+    \tkzgr@presetkeys{vertex}{Math = true}%
+\fi%
+}
+%<--------------------------------------------------------------------------->
+%                           Init Vertex
+%<--------------------------------------------------------------------------->
+\tkzgr@boolkey{vertex}{empty}
+\tkzgr@cmdkey{vertex}{unit}
+\tkzgr@cmdkey{vertex}{x}
+\tkzgr@cmdkey{vertex}{y}
+\tkzgr@cmdkey{vertex}{a}
+\tkzgr@cmdkey{vertex}{d}
+\tkzgr@boolkey{vertex}{Node}
+\tkzgr@cmdkey{vertex}{dir}
+\tkzgr@cmdkey{vertex}{style}
+\tkzgr@cmdkey{vertex}{position}
+\tkzgr@cmdkey{vertex}{L}
+\tkzgr@cmdkey{vertex}{Lpos}
+\tkzgr@cmdkey{vertex}{Ldist}
+\tkzgr@boolkey{vertex}{NoLabel}
+\tkzgr@boolkey{vertex}{Math}
+\tkzgr@boolkey{vertex}{LabelOut}
+\tkzgr@cmdkey{vertex}{rotation}
+\tkzgr@boolkey{vertex}{clockwise}
+\tkzgr@presetkeys{vertex}{Node      = false,
+                          NoLabel   = false,
+                          LabelOut  = false,
+                          empty     = false,
+                          Math      = false,
+                          x         = {},
+                          y         = {},
+                          a         = {},
+                          d         = {},
+                          unit      = \GraphUnit,
+                          dir       = \tkzgr@EA,
+                          position  = {},
+                          style     = {},
+                          L         = {},
+                          Ldist     = 0cm,
+                          Lpos      = 0,
+                          rotation  = 0,
+                          clockwise = false}
+%<--------------------------------------------------------------------------->
+%                                  Vertex
+%<--------------------------------------------------------------------------->
+\newcommand*{\tkzgr@Vertex}[1][]{\tkzgr@vertex[#1]}%
+\def\tkzgr@vertex[#1]#2{%
+    \tkzgr@setkeys{vertex}{#1}%
+    \tkzgr@@vertex{#2}%
+}
+% #1 name of the vertex
+\def\tkzgr@@vertex#1{%
+\tkzgr@recordvertex{#1}%
+\def\tkzgr@nstyle{VertexStyle}%
+%<--------------------------------------------------------------------------->
+\ifGR@vertex@Node%
+   \pgfextractx{\pgf@x}{\pgfpointanchor{#1}{center}}
+   \pgfextracty{\pgf@y}{\pgfpointanchor{#1}{center}}
+   \edef\cmdGR@vertex@x{\pgf@x}
+   \edef\cmdGR@vertex@y{\pgf@y}
+\fi%
+%<--------------------------------------------------------------------------->
+\ifGR@vertex@empty%
+   \begin{scope}
+      \tkzgr@ifempty{\cmdGR@vertex@x}{%
+       \tkzgr@ifempty{\cmdGR@vertex@d}{%
+           \protected@edef\@tempa{%
+               \noexpand \node[inner sep = 0pt](#1)%
+                  [\cmdGR@vertex@position]{}}%
+           \@tempa;}{%
+           \protected@edef\@tempa{%
+               \noexpand\node[inner sep = 0pt](#1)%
+                  at (\cmdGR@vertex@a:\cmdGR@vertex@d){}}%
+           \@tempa;}}{%
+           \protected@edef\@tempa{%
+               \noexpand\node[inner sep = 0pt](#1)%
+                  at (\cmdGR@vertex@x,\cmdGR@vertex@y){}}%
+           \@tempa;}%
+    \end{scope}
+\else
+ \begin{scope}[label distance = \cmdGR@vertex@Ldist]
+  \ifGR@vertex@NoLabel
+       \def\tkzgr@vertex@Label{}%
+       \def\cmdGR@vertex@L{}%
+       \def\tkzgr@vertex@Name{}%
+  \else%
+     \ifGR@vertex@Math
+       \tkzgr@ifempty{\cmdGR@vertex@L}%
+         {\def\tkzgr@vertex@Name{$#1$}}%
+         {\def\tkzgr@vertex@Name{$\cmdGR@vertex@L$}}%
+     \else
+       \tkzgr@ifempty{\cmdGR@vertex@L}%
+         {\def\tkzgr@vertex@Name{#1}}%
+         {\def\tkzgr@vertex@Name{\cmdGR@vertex@L}}%
+     \fi%
+      \ifGR@vertex@LabelOut%
+        \def\tkzgr@nstyle{VertexStyle,%
+                    label={[text = \cmdGR@SVN@TextColor,\cmdGR@vertex@style]%
+                    \cmdGR@vertex@Lpos:\tkzgr@vertex@Name}}%
+        \def\tkzgr@vertex@Label{}%
+      \else%
+      \def\tkzgr@vertex@Label{\tkzgr@vertex@Name}%
+      \fi
+  \fi
+%<--------------------------------------------------------------------------->
+  \tkzgr@ifempty{\cmdGR@vertex@x}{%
+      \tkzgr@ifempty{\cmdGR@vertex@d}{%
+        \protected@edef\@tempa{%
+        \noexpand\node[outer sep=0pt,\cmdGR@vertex@style,\tkzgr@nstyle](#1)%
+                      [\cmdGR@vertex@position]{%
+        \noexpand\tkzgr@vertex@Label}}%
+       \@tempa;}{%
+        \protected@edef\@tempa{%
+        \noexpand\node[outer sep=0pt,\cmdGR@vertex@style,\tkzgr@nstyle](#1)
+                       at (\cmdGR@vertex@a:\cmdGR@vertex@d){%
+        \noexpand\tkzgr@vertex@Label}}%
+        \@tempa;}}{%
+    \protected@edef\@tempa{%
+      \noexpand\node[outer sep=0pt,\cmdGR@vertex@style,\tkzgr@nstyle](#1)
+                 at (\cmdGR@vertex@x,\cmdGR@vertex@y){%
+      \noexpand\tkzgr@vertex@Label}}%
+      \@tempa;}%
+  \end{scope}
+\fi%
+}
+%<--------------------------------------------------------------------------->
+%                          End of  Vertex
+%<--------------------------------------------------------------------------->
+%    Relative position : \EA (east) \WE (west) \NO (north) \SO (south)
+%                        \NOEA \NOWE \SOEA \SOWE
+% \tkzgr@relative{<name>}{<x factor>}{<y factor>}
+%<--------------------------------------------------------------------------->
+\def\tkzgr@relative#1#2#3{%
+  \expandafter\newcommand\expandafter*\csname tkzgr@#1\endcsname[1][]{%
+    \csname tkzgr@@#1\endcsname[##1]}%
+  \expandafter\def\csname tkzgr@@#1\endcsname[##1](##2)##3{%
+    \begingroup
+      \tkzgr@setkeys{vertex}{##1}%
+      \path (##2)--++(#2\cmdGR@vertex@unit,#3\cmdGR@vertex@unit)
+            coordinate (##3);
+      \tkzgr@Vertex[##1,Node]{##3}
+    \endgroup}}
+\tkzgr@relative{EA}{}{0*}
+\tkzgr@relative{WE}{-}{0*}
+\tkzgr@relative{NO}{0*}{}
+\tkzgr@relative{SO}{0*}{-}
+\tkzgr@relative{NOEA}{}{}
+\tkzgr@relative{NOWE}{-}{}
+\tkzgr@relative{SOEA}{}{-}
+\tkzgr@relative{SOWE}{-}{-}
+%<--------------------------------------------------------------------------->
+%                               Vertices
+%<--------------------------------------------------------------------------->
+% \Vertices[options]{form}{list} ; form : line, square, tr1, tr2, tr3, tr4,
+% circle ; each form is the macro \tkzgr@vertices@<form>
+\newcommand*{\tkzgr@Vertices}[1][]{\tkzgr@vertices@nostar[#1]}%
+\def\tkzgr@vertices@nostar[#1]#2#3{%
+\tkzgr@setkeys{vertex}{#1}%
+\begingroup%
+   \setcounter{tkz@gr@p}{0}%
+   \@for\tkzgr@liste:=#3\do{%
+     \stepcounter{tkz@gr@p}%
+     \global\expandafter\let\csname label@\alph{tkz@gr@p}\endcsname
+                                \tkzgr@liste}%
+   \@ifundefined{tkzgr@vertices@#2}%
+     {\PackageWarning{tkz-graph}{Unknown form `#2' for \string\Vertices}}%
+     {\csname tkzgr@vertices@#2\endcsname{#1}{#3}}%
+\endgroup%
+}
+\def\tkzgr@vertices@line#1#2{%
+   \setcounter{tkz@gr@p}{0}%
+   \foreach \tkzgr@fin in {#2}{%
+       \ifnum\value{tkz@gr@p}=0
+       \global\let\tkzgr@deb\tkzgr@fin
+       \tkzgr@Vertex[#1]{\tkzgr@fin}
+       \stepcounter{tkz@gr@p}
+       \else
+       \cmdGR@vertex@dir[#1,x={},y={},a={},d={},Node=false]%
+                        (\tkzgr@deb){\tkzgr@fin}
+       \global\let\tkzgr@deb\tkzgr@fin
+       \fi
+     }}
+\def\tkzgr@vertices@square#1#2{%
+     \begin{scope}[rotate=45]
+       \tkzgr@Vertex[#1,Lpos=-135]{\label@a}
+        \tkzgr@EA[#1,Lpos=-45,x={},y={},Node=false](\label@a){\label@b}
+        \tkzgr@NO[#1,Lpos=45, x={},y={},Node=false](\label@b){\label@c}
+        \tkzgr@WE[#1,Lpos=135,x={},y={},Node=false](\label@c){\label@d}
+     \end{scope}}
+\def\tkzgr@vertices@tri#1#2#3{%
+     \tkzgr@Vertex[#1]{\label@a}
+     #2[#1,x={},y={},Node=false](\label@a){\label@b}
+     #3[#1,x={},y={},Node=false](\label@b){\label@c}}
+\def\tkzgr@vertices@trI#1#2{\tkzgr@vertices@tri{#1}\tkzgr@EA\tkzgr@NO}
+\def\tkzgr@vertices@trII#1#2{\tkzgr@vertices@tri{#1}\tkzgr@NO\tkzgr@EA}
+\def\tkzgr@vertices@trIII#1#2{\tkzgr@vertices@tri{#1}\tkzgr@NO\tkzgr@WE}
+\def\tkzgr@vertices@trIV#1#2{\tkzgr@vertices@tri{#1}\tkzgr@WE\tkzgr@NO}
+\expandafter\let\csname tkzgr@vertices@tr1\endcsname\tkzgr@vertices@trI
+\expandafter\let\csname tkzgr@vertices@tr2\endcsname\tkzgr@vertices@trII
+\expandafter\let\csname tkzgr@vertices@tr3\endcsname\tkzgr@vertices@trIII
+\expandafter\let\csname tkzgr@vertices@tr4\endcsname\tkzgr@vertices@trIV
+% keys rotation (angle of the first vertex) and clockwise
+\def\tkzgr@turn{%
+  \ifGR@vertex@clockwise
+    \pgfmathparse{\cmdGR@vertex@rotation-\tkzgr@newangle}%
+    \let\tkzgr@newangle\pgfmathresult
+  \else
+    \pgfmathparse{\cmdGR@vertex@rotation}%
+    \ifdim\pgfmathresult pt=\z@\else
+      \pgfmathparse{\cmdGR@vertex@rotation+\tkzgr@newangle}%
+      \let\tkzgr@newangle\pgfmathresult
+    \fi
+  \fi}
+\def\tkzgr@vertices@circle#1#2{%
+    \pgfmathdivide{360}{\value{tkz@gr@p}}%
+    \global\let\tkzgr@angle\pgfmathresult%
+    \setcounter{tkz@gr@p}{0}%
+    \foreach \tkzgr@lab in {#2}{%
+      \pgfmathmultiply{\tkzgr@angle}{\thetkz@gr@p}%
+      \let\tkzgr@newangle\pgfmathresult%
+      \tkzgr@turn
+      \pgfmathadd{\cmdGR@vertex@Lpos}{\tkzgr@newangle}%
+      \let\tkzgr@posangle\pgfmathresult%
+        \tkzgr@Vertex[#1,
+              a    = \tkzgr@newangle,
+              d    = \cmdGR@vertex@unit,
+              Lpos = \tkzgr@posangle]{\tkzgr@lab}
+          \stepcounter{tkz@gr@p}%
+      }}
+%<--------------------------------------------------------------------------->
+%                          Edge style
+%<--------------------------------------------------------------------------->
+\tikzset{LabelStyle/.style={}}% add 03/04/2009
+\tikzset{EdgeStyle/.style={}}
+%<--------------------------------------------------------------------------->
+%                          Init    SetUpEdge
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{SUE}{color}
+\tkzgr@cmdkey{SUE}{label}
+\tkzgr@cmdkey{SUE}{labelstyle}
+\tkzgr@cmdkey{SUE}{labeltext}
+\tkzgr@cmdkey{SUE}{labelcolor}
+\tkzgr@cmdkey{SUE}{style}
+\tkzgr@cmdkey{SUE}{lw}
+\tkzgr@presetkeys{SUE}{color        = \EdgeColor,
+                       lw           = \EdgeLineWidth,
+                       label        = {},
+                       labeltext    = \LabelTextColor,
+                       labelcolor   = \LabelFillColor,
+                       labelstyle   = {},
+                       style        = {}}
+%<--------------------------------------------------------------------------->
+%                             SetUpEdge
+%<--------------------------------------------------------------------------->
+\newcommand*{\SetUpEdge}[1][]{\tkzgr@SetUpEdge[#1]}%
+\def\tkzgr@SetUpEdge[#1]{%
+\tkzgr@setkeys{SUE}{#1}%
+\tkzgr@presetkeys{edge}{color        = \cmdGR@SUE@color,
+                        lw           = \cmdGR@SUE@lw,
+                        label        = \cmdGR@SUE@label,
+                        labeltext    = \cmdGR@SUE@labeltext,
+                        labelcolor   = \cmdGR@SUE@labelcolor,
+                        labelstyle   = \cmdGR@SUE@labelstyle,
+                        style        = \cmdGR@SUE@style}
+\tikzset{LabelStyle/.style={}}
+\tikzset{EdgeStyle/.style={}}}
+\newcommand*{\DisableEdgeStyle}{\tikzset{EdgeStyle/.style={}}}
+%<--------------------------------------------------------------------------->
+%                              Init Edge
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{edge}{color}
+\tkzgr@cmdkey{edge}{lw}
+\tkzgr@cmdkey{edge}{double}
+\tkzgr@cmdkey{edge}{incolor}
+\tkzgr@cmdkey{edge}{dd}
+\tkzgr@cmdkey{edge}{style}
+\tkzgr@cmdkey{edge}{label}
+\tkzgr@cmdkey{edge}{labeltext}
+\tkzgr@cmdkey{edge}{labelcolor}
+\tkzgr@cmdkey{edge}{labelstyle}
+\tkzgr@boolkey{edge}{local}
+% arrows : arrow = <tikz arrow> or the short keys ->, <-, <->, -
+\tkzgr@cmdkey{edge}{arrow}
+\pgfkeys{/tkzgraph/edge/->/.style  = {/tkzgraph/edge/arrow = ->},
+         /tkzgraph/edge/<-/.style  = {/tkzgraph/edge/arrow = <-},
+         /tkzgraph/edge/<->/.style = {/tkzgraph/edge/arrow = <->},
+         /tkzgraph/edge/-/.style   = {/tkzgraph/edge/arrow = {}}}
+\tkzgr@presetkeys{edge}{style      = {pos=.5},
+                        lw         = \EdgeLineWidth,
+                        label      = {},
+                        labeltext  = \LabelTextColor,
+                        labelcolor = \LabelFillColor,
+                        labelstyle = {},
+                        local      = false,
+                        double     = {},
+                        dd         = \EdgeDoubleDistance,
+                        incolor    = \EdgeFillColor,
+                        color      = \EdgeColor,
+                        arrow      = {}}
+%<--------------------------------------------------------------------------->
+%                               Edge
+%<--------------------------------------------------------------------------->
+\newcommand*{\tkzgr@Edge}[1][]{\tkzgr@edge[#1]}%
+\def\tkzgr@edge[#1](#2)(#3){%
+\tkzgr@setkeys{edge}{#1}%
+% \Edge(A)(A) draws nothing (tkz-berge uses it) : it is not recorded,
+% and without label and arrow it is not drawn (no pgf warning)
+\protected@edef\tkzgr@edA{#2}\protected@edef\tkzgr@edB{#3}%
+\let\tkzgr@next\@firstofone
+\ifx\tkzgr@edA\tkzgr@edB
+  \tkzgr@ifempty{\cmdGR@edge@label\cmdGR@edge@arrow}%
+    {\let\tkzgr@next\@gobble}{}%
+\else
+  \tkzgr@recordedge{#2}{#3}%
+  \tkzgr@hook@edge{#2}{#3}{\cmdGR@edge@label}{\cmdGR@edge@arrow}%
+\fi
+\tkzgr@next{%
+ \begingroup%
+\tkzgr@ifempty{\cmdGR@edge@arrow}%
+  {\let\tkzgr@arrowopts\@empty}%
+  {\edef\tkzgr@arrowopts{,\cmdGR@edge@arrow,>={\tkzgr@arrowtip}}}%
+\tkzgr@ifempty{\cmdGR@edge@double}{%
+\tikzset{LocalEdgeStyle/.style={color = \cmdGR@edge@color,
+                                line width = \cmdGR@edge@lw}}}{%
+\tikzset{LocalEdgeStyle/.style={line width = \cmdGR@edge@dd,
+                                color = \cmdGR@edge@double,
+                                double distance = \cmdGR@edge@lw,
+                                double  = \cmdGR@edge@color}}}%
+\ifGR@edge@local%
+      \tikzset{EdgeStyle/.style={}}%
+      \fi
+   \tkzgr@ifempty{\cmdGR@edge@label}{%
+     \protected@edef\@tempa{%
+     \noexpand   \draw[LocalEdgeStyle,\cmdGR@edge@style,EdgeStyle\tkzgr@arrowopts]}%
+                 \@tempa (#2) to (#3)}{%
+     \protected@edef\@tempa{%
+     \noexpand   \draw[LocalEdgeStyle,\cmdGR@edge@style,EdgeStyle\tkzgr@arrowopts] (#2) to%
+    node[fill = \cmdGR@edge@labelcolor,
+         text = \cmdGR@edge@labeltext,
+         \cmdGR@edge@labelstyle,LabelStyle]}\@tempa
+   {\cmdGR@edge@label} (#3)}%
+   ;
+\endgroup}%
+}%
+%<--------------------------------------------------------------------------->
+%                               Edges
+%<--------------------------------------------------------------------------->
+\newcommand*{\tkzgr@Edges}[1][]{\tkzgr@edges[#1]}%
+\def\tkzgr@edges[#1](#2){%
+\tkzgr@setkeys{edge}{#1}%
+ \begingroup%
+   \setcounter{tkz@gr@p}{0}%
+   \foreach \tkzgr@fin in {#2}{%
+       \ifnum\value{tkz@gr@p}=0
+       \global\let\tkzgr@deb\tkzgr@fin
+       \stepcounter{tkz@gr@p}%
+       \else
+       \tkzgr@Edge[#1](\tkzgr@deb)(\tkzgr@fin)
+       \global\let\tkzgr@deb\tkzgr@fin
+       \fi
+   }
+ \endgroup%
+}%
+%<--------------------------------------------------------------------------->
+%                          Init  loop
+%<--------------------------------------------------------------------------->
+\tkzgr@choicekey{loop}{dir}{WE,EA,NO,SO,NOWE,NOEA,SOWE,SOEA}{%
+\ifcase\nr\relax
+\tikzset{LoopStyle/.style = {in=225, out=135, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in= 45, out=-45, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in=135, out= 45, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in=-45, out=-135, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in=180, out=90, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in=90, out=0, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in=-90, out=-180, distance=\cmdGR@loop@dist}}%
+\or
+\tikzset{LoopStyle/.style = {in=0, out=-90, distance=\cmdGR@loop@dist}}%
+\fi%
+}
+\tkzgr@cmdkey{loop}{color}
+\tkzgr@cmdkey{loop}{label}
+\tkzgr@cmdkey{loop}{labelstyle}
+\tkzgr@cmdkey{loop}{style}
+\tkzgr@cmdkey{loop}{dist}
+\tkzgr@presetkeys{loop}{style      = {pre,thick},%`
+                        label      = {},%
+                        labelstyle = {},%
+                        color      = \tkz@suc@txt,%
+                        dist       = 4cm,%
+                        dir        = WE}
+%<--------------------------------------------------------------------------->
+%                                loop
+%<--------------------------------------------------------------------------->
+\newcommand*{\grLoop}[1][]{\tkzgr@loop[#1]}%
+\newcommand*{\tkzgr@Loop}[1][]{\tkzgr@loop[#1]}%
+\def\tkzgr@loop[#1](#2){%
+\tkzgr@setkeys{loop}{#1}%
+\tkzgr@recordedge{#2}{#2}%
+\tkzgr@hook@edge{#2}{#2}{\cmdGR@loop@label}{}%
+\protected@edef\@tempa{%
+\noexpand \draw[\cmdGR@loop@color] (#2)%
+  edge [EdgeStyle,LoopStyle,\cmdGR@loop@style]%
+  node [LabelStyle,\cmdGR@loop@labelstyle]%
+  {\cmdGR@loop@label} (#2)}\@tempa;%
+}%
+%<--------------------------------------------------------------------------->
+%                    Init   Graphes probabilistes
+%<--------------------------------------------------------------------------->
+\tkzgr@cmdkey{grpb}{unit}
+\tkzgr@cmdkey{grpb}{LposA}
+\tkzgr@cmdkey{grpb}{LposB}
+\tkzgr@cmdkey{grpb}{Ldist}
+\tkzgr@cmdkey{grpb}{LoopDist}
+\tkzgr@presetkeys{grpb}{LposA    = 180,%
+                        LposB    = 0,%
+                        Ldist    = 0cm,%
+                        LoopDist = 4cm,
+                        unit     = 4}
+%<--------------------------------------------------------------------------->
+%                       Graphes probabilistes
+%<--------------------------------------------------------------------------->
+\newcommand*{\grProb}[7][]{%
+\tkzgr@setkeys{grpb}{#1}%
+\tikzset{LabelStyle/.append style ={pos=.5}}
+\tkzgr@Vertex[Lpos=\cmdGR@grpb@LposA,Ldist=\cmdGR@grpb@Ldist,L=#2]{grA}
+\tkzgr@EA[unit=\cmdGR@grpb@unit,Lpos=\cmdGR@grpb@LposB,
+    Ldist=\cmdGR@grpb@Ldist,L=#3](grA){grB}
+\tkzgr@Edge[style={post,bend left=60},label={$#4$},labelstyle={above}](grA)(grB)
+\tkzgr@Edge[style={post,bend left=60},label={$#5$},labelstyle={below}](grB)(grA)
+\tkzgr@Loop[dist=\cmdGR@grpb@LoopDist,dir=WE,label={$#6$},labelstyle={left}](grA)
+\tkzgr@Loop[dist=\cmdGR@grpb@LoopDist,dir=EA,label={$#7$},labelstyle={right}](grB)
+}%
+\newcommand*{\grProbThree}[7][]{%
+\tkzgr@setkeys{grpb}{#1}%
+\begin{scope}[]
+  \tikzset{LabelStyle/.append style ={pos=.5}}
+  \tkzgr@Vertices[empty,unit=\cmdGR@grpb@unit]{circle}{grA,grB,grC}
+   \tkzgr@Vertex[Node,Lpos=\cmdGR@grpb@LposA,Ldist=\cmdGR@grpb@Ldist,L=#2]{grA}
+   \tkzgr@Vertex[Node,Lpos=\cmdGR@grpb@LposA,Ldist=\cmdGR@grpb@Ldist,L=#3]{grB}
+   \tkzgr@Vertex[Node,Lpos=\cmdGR@grpb@LposA,Ldist=\cmdGR@grpb@Ldist,L=#4]{grC}
+   \foreach \tkzgr@x/\tkzgr@y/\tkzgr@z in {#5} {%
+   \tkzgr@Loop[dist=\cmdGR@grpb@LoopDist,dir=EA,label={$\tkzgr@x$}](grA)
+\tkzgr@Edge[style={post,bend right=20},label={$\tkzgr@y$}](grA)(grB)
+\tkzgr@Edge[style={post,bend right=20},label={$\tkzgr@z$}](grA)(grC)}
+\foreach \tkzgr@x/\tkzgr@y/\tkzgr@z in {#6} {%
+   \tkzgr@Loop[dist=\cmdGR@grpb@LoopDist,dir=NO,label={$\tkzgr@x$}](grB)
+\tkzgr@Edge[style={post,bend right=20},label={$\tkzgr@y$}](grB)(grA)
+\tkzgr@Edge[style={post,bend right=20},label={$\tkzgr@z$}](grB)(grC)}
+   \foreach \tkzgr@x/\tkzgr@y/\tkzgr@z in {#7} {%
+   \tkzgr@Loop[dist=\cmdGR@grpb@LoopDist,dir=SO,label={$\tkzgr@x$}](grC)
+ \tkzgr@Edge[style={post,bend right=20},label={$\tkzgr@y$}](grC)(grA)
+ \tkzgr@Edge[style={post,bend right=20},label={$\tkzgr@z$}](grC)(grB)}
+\end{scope}
+}
+%<--------------------------------------------------------------------------->
+%                      End   Graphes probabilistes
+%<--------------------------------------------------------------------------->
+\newcommand{\SetVertexLabeledSmall}{%
+\SetVertexLabel%
+\tikzset{VertexStyle/.style = {draw,
+                               shape           = circle,
+                               inner sep       = 1pt,
+                               minimum size    = 10pt}}
+\tikzset{EdgeStyle/.style  = {double           = \tkz@suc@txt,
+                              double distance  = 1pt,
+                              color            = \tkz@suc@bkc,
+                              line width       = 0.7pt}}
+}
+\newcommand{\SetVertexNotLabeledSmall}{%
+  \tikzset{EdgeStyle/.style = {double = \tkz@suc@txt,
+                               double distance = 1pt,
+                               color = \tkz@suc@bkc,
+                               line width = 0.7pt}}
+  \SetVertexNoLabel
+  \SetVertexSimple[MinSize=6pt,FillColor=gray]
+  \renewcommand*{\VertexLineWidth}{0pt}
+}%
+
+\newcommand{\SetVertexForPresentation}[3]{%
+  \GraphInit[vstyle=Shade]
+  \SetVertexNoLabel
+  \renewcommand*{\VertexBigMinSize}{12pt}%
+  \renewcommand*{\EdgeDoubleDistance}{2pt}%
+  \renewcommand*{\EdgeLineWidth}{0.7pt}%
+  \SetGraphShadeColor{#1}{#2}{#3}
+}%
+
+\newcommand{\setxyzvec}[1][20]{%
+  \pgfmathsetmacro{\xone}{cos(180+#1)}%
+  \pgfmathsetmacro{\yone}{sin(180+#1)}%
+  \pgfmathsetmacro{\xtwo}{cos(360-#1)}%
+  \pgfmathsetmacro{\ytwo}{sin(360-#1)}%
+  \pgfsetxvec{\pgfpoint{\xone cm}{\yone cm}}%
+  \pgfsetyvec{\pgfpoint{\xtwo cm}{\ytwo cm}}%
+  \pgfsetzvec{\pgfpoint{0cm}{1cm}}%
+}
+%<--------------------------------------------------------------------------->
+%                    \tkzSetUpGraph : global settings
+%<--------------------------------------------------------------------------->
+% Each key changes one of the macros \Vertex..., \Edge..., \Label...,
+% \GraphUnit (the old way was \renewcommand). The changes are local :
+% inside a group or a tikzpicture they stop at the end of it.
+% directed : every edge gets an arrow (key -> of \Edge) ; directed=false
+% cancels it. arrow tip : the tip used by the keys ->, <-, <-> of \Edge
+% (stealth' by default ; for the tips Stealth, Latex ... load the
+% library arrows.meta : it is not loaded by tkz-graph because it changes
+% slightly the default tip "to").
+\def\tkzgr@arrowtip{stealth'}
+\def\tkzgr@true{true}
+\def\tkzgr@directed#1{%
+  \edef\tkzgr@tmpd{#1}%
+  \ifx\tkzgr@tmpd\tkzgr@true
+    \tkzgr@presetkeys{edge}{arrow = ->}%
+  \else
+    \tkzgr@presetkeys{edge}{arrow = {}}%
+  \fi}
+\pgfkeys{/tkzgraph/setup/.cd,
+  vertex shape/.code         = {\def\VertexShape{#1}},
+  vertex line width/.code    = {\def\VertexLineWidth{#1}},
+  vertex line color/.code    = {\def\VertexLineColor{#1}},
+  vertex text color/.code    = {\def\VertexTextColor{#1}},
+  vertex fill/.code          = {\def\VertexFillColor{#1}},
+  light fill/.code           = {\def\VertexLightFillColor{#1}},
+  dark fill/.code            = {\def\VertexDarkFillColor{#1}},
+  ball color/.code           = {\def\VertexBallColor{#1}},
+  inner sep/.code            = {\def\VertexInnerSep{#1}},
+  outer sep/.code            = {\def\VertexOuterSep{#1}},
+  small size/.code           = {\def\VertexSmallMinSize{#1}},
+  medium size/.code          = {\def\VertexInterMinSize{#1}},
+  big size/.code             = {\def\VertexBigMinSize{#1}},
+  edge color/.code           = {\def\EdgeColor{#1}},
+  edge width/.code           = {\def\EdgeLineWidth{#1}},
+  edge fill/.code            = {\def\EdgeFillColor{#1}},
+  art color/.code            = {\def\EdgeArtColor{#1}},
+  double distance/.code      = {\def\EdgeDoubleDistance{#1}},
+  label text/.code           = {\def\LabelTextColor{#1}},
+  label fill/.code           = {\def\LabelFillColor{#1}},
+  unit/.code                 = {\def\GraphUnit{#1}},
+  directed/.code             = {\tkzgr@directed{#1}},
+  directed/.default          = true,
+  arrow tip/.code            = {\def\tkzgr@arrowtip{#1}}}
+\newcommand*{\tkzSetUpGraph}[1][]{\pgfqkeys{/tkzgraph/setup}{#1}}
+%<--------------------------------------------------------------------------->
+%                    Recording of the graph (vertices, edges)
+%<--------------------------------------------------------------------------->
+% Each tikzpicture starts a new record. \tkzgr@vlist : names of the
+% vertices in order of creation ; \tkzgr@elist : edges A/B (a loop is A/A).
+% Used by \tkzAdjacencyMatrix.
+% Hooks (empty here) used by the option lua (tkz-graph-lua.tex) :
+%   \tkzgr@hook@reset            a new tikzpicture starts
+%   \tkzgr@hook@vertex{name}     a vertex is created (or drawn again)
+%   \tkzgr@hook@edge{A}{B}{label}{arrow}  an edge (A=B : a loop) ; label
+%                                and arrow are macros or values
+\let\tkzgr@hook@reset\relax
+\let\tkzgr@hook@vertex\@gobble
+\def\tkzgr@hook@edge#1#2#3#4{}
+\def\tkzgr@resetrecord{\global\let\tkzgr@vlist\@empty
+                       \global\let\tkzgr@elist\@empty
+                       \tkzgr@hook@reset}
+\tkzgr@resetrecord
+\def\tkzgr@recordvertex#1{%
+  \protected@edef\tkzgr@vn{#1}%
+  \edef\tkzgr@tmp{\noexpand\in@{,\tkzgr@vn,}{,\tkzgr@vlist,}}%
+  \tkzgr@tmp
+  \ifin@\else
+    \xdef\tkzgr@vlist{\ifx\tkzgr@vlist\@empty\else\tkzgr@vlist,\fi
+                      \tkzgr@vn}%
+  \fi
+  \tkzgr@hook@vertex{#1}}
+\def\tkzgr@recordedge#1#2{%
+  \protected@edef\tkzgr@vn{#1/#2}%
+  \xdef\tkzgr@elist{\ifx\tkzgr@elist\@empty\else\tkzgr@elist,\fi
+                    \tkzgr@vn}}
+%<--------------------------------------------------------------------------->
+%                         \tkzHighlightPath
+%<--------------------------------------------------------------------------->
+% \tkzHighlightPath[options]{A,B,C,D}  path A-B-C-D drawn again over the
+%                                      edges (cycle : D-A added)
+% \tkzHighlightPath[options]{A/B,C/D}  edges A-B and C-D
+% options : color (red), lw (1.6pt), style (tikz options, for example
+% bend left=20 to follow a bent edge), cycle
+\tkzgr@cmdkey{hl}{color}
+\tkzgr@cmdkey{hl}{lw}
+\tkzgr@cmdkey{hl}{style}
+\tkzgr@boolkey{hl}{cycle}
+\tkzgr@presetkeys{hl}{color = red,
+                      lw    = 1.6pt,
+                      style = {},
+                      cycle = false}
+\newcommand*{\tkzHighlightPath}[2][]{%
+\begingroup
+  \tkzgr@setkeys{hl}{#1}%
+  \in@{/}{#2}%
+  \ifin@
+    \foreach \tkzgr@ha/\tkzgr@hb in {#2}{\tkzgr@hledge{\tkzgr@ha}{\tkzgr@hb}}%
+  \else
+    \setcounter{tkz@gr@p}{0}%
+    \foreach \tkzgr@fin in {#2}{%
+      \ifnum\value{tkz@gr@p}=0
+        \global\let\tkzgr@first\tkzgr@fin
+        \stepcounter{tkz@gr@p}%
+      \else
+        \tkzgr@hledge{\tkzgr@deb}{\tkzgr@fin}%
+      \fi
+      \global\let\tkzgr@deb\tkzgr@fin}%
+    \ifGR@hl@cycle\tkzgr@hledge{\tkzgr@deb}{\tkzgr@first}\fi
+  \fi
+\endgroup}
+\def\tkzgr@hledge#1#2{%
+  \protected@edef\@tempa{\noexpand\draw[color = \cmdGR@hl@color,
+                                        line width = \cmdGR@hl@lw,
+                                        \cmdGR@hl@style] (#1) to (#2)}%
+  \@tempa;}
+%<--------------------------------------------------------------------------->
+%                        Adjacency matrix
+%<--------------------------------------------------------------------------->
+% \tkzAdjacencyMatrix[options] : matrix of the graph of the last
+% tikzpicture (math mode or not). Entry (i,j) : number of edges between
+% the i-th and the j-th vertex (a loop counts 1).
+% options : directed (edge A-B counts only for (A,B)),
+%           order = {A,B,...} (default : order of creation)
+\newcount\tkzgr@cnt
+\tkzgr@boolkey{adj}{directed}
+\tkzgr@cmdkey{adj}{order}
+\tkzgr@presetkeys{adj}{directed = false,
+                       order    = {}}
+% \tkzgr@countedges{i}{j} -> \tkzgr@cnt
+\def\tkzgr@countedges#1#2{%
+  \tkzgr@cnt\z@
+  \edef\tkzgr@i{#1}\edef\tkzgr@j{#2}%
+  \@for\tkzgr@e:=\tkzgr@elist\do{%
+    \ifx\tkzgr@e\@empty\else
+      \expandafter\tkzgr@cmpedge\tkzgr@e\@nil
+    \fi}}
+\def\tkzgr@cmpedge#1/#2\@nil{%
+  \def\tkzgr@u{#1}\def\tkzgr@v{#2}%
+  \ifx\tkzgr@u\tkzgr@i
+    \ifx\tkzgr@v\tkzgr@j\advance\tkzgr@cnt\@ne\fi
+  \else
+    \ifGR@adj@directed\else
+      \ifx\tkzgr@u\tkzgr@j
+        \ifx\tkzgr@v\tkzgr@i\advance\tkzgr@cnt\@ne\fi
+      \fi
+    \fi
+  \fi}
+\newcommand*{\tkzAdjacencyMatrix}[1][]{%
+\begingroup
+  \tkzgr@setkeys{adj}{#1}%
+  \tkzgr@ifempty{\cmdGR@adj@order}%
+    {\let\tkzgr@order\tkzgr@vlist}%
+    {\edef\tkzgr@order{\cmdGR@adj@order}}%
+  \global\let\tkzgr@rows\@empty
+  \global\let\tkzgr@cols\@empty
+  \foreach \tkzgr@a in \tkzgr@order {%
+    \xdef\tkzgr@cols{\tkzgr@cols c}%
+    \global\let\tkzgr@row\@empty
+    \foreach \tkzgr@b in \tkzgr@order {%
+      \tkzgr@countedges{\tkzgr@a}{\tkzgr@b}%
+      \xdef\tkzgr@row{\ifx\tkzgr@row\@empty\else\tkzgr@row&\fi
+                      \the\tkzgr@cnt}}%
+    \xdef\tkzgr@rows{\ifx\tkzgr@rows\@empty\else
+                       \unexpanded\expandafter{\tkzgr@rows}\noexpand\\\fi
+                     \tkzgr@row}}%
+  \edef\tkzgr@tmp{\noexpand\left(\noexpand\begin{array}{\tkzgr@cols}%
+     \unexpanded\expandafter{\tkzgr@rows}\noexpand\end{array}\noexpand\right)}%
+  \ensuremath{\tkzgr@tmp}%
+\endgroup}
+%<--------------------------------------------------------------------------->
+%                       Graph from a matrix
+%<--------------------------------------------------------------------------->
+% \tkzGraphFromMatrix[options]{A,B,C}{0,1,1;1,0,1;1,1,0}
+% rows separated by ; entries by , (decimal point : .)
+% A non-zero entry (i,j) gives an edge (i,j) ; on the diagonal a loop.
+% options :
+%  placed        the vertices already exist (otherwise they are drawn
+%                on a circle, as \Vertices{circle})
+%  unit, rotation, clockwise   for the circle
+%  directed      arrows ; edges i->j and j->i are bent
+%  weighted      the entries are written on the edges
+%  style         tikz options added to each edge
+%  loop distance size of the loops (1cm)
+%  bend          angle used for the pairs i->j, j->i (15)
+\tkzgr@boolkey{mat}{placed}
+\tkzgr@boolkey{mat}{directed}
+\tkzgr@boolkey{mat}{weighted}
+\tkzgr@boolkey{mat}{clockwise}
+\tkzgr@cmdkey{mat}{unit}
+\tkzgr@cmdkey{mat}{rotation}
+\tkzgr@cmdkey{mat}{style}
+\tkzgr@cmdkey{mat}{loopdist}
+\pgfkeys{/tkzgraph/mat/loop distance/.style = {/tkzgraph/mat/loopdist = #1}}
+\tkzgr@cmdkey{mat}{bend}
+\tkzgr@presetkeys{mat}{placed        = false,
+                       directed      = false,
+                       weighted      = false,
+                       clockwise     = false,
+                       unit          = \GraphUnit,
+                       rotation      = 0,
+                       style         = {},
+                       loopdist      = 1cm,
+                       bend          = 15}
+\newcount\tkzgr@mi
+\newcount\tkzgr@mj
+\newcount\tkzgr@mn
+\newcommand*{\tkzGraphFromMatrix}[3][]{%
+\begingroup
+  \tkzgr@setkeys{mat}{#1}%
+  % names : \tkzgr@m@name@<i>
+  \tkzgr@mn\z@
+  \@for\tkzgr@a:=#2\do{%
+    \advance\tkzgr@mn\@ne
+    \expandafter\let\csname tkzgr@m@name@\the\tkzgr@mn\endcsname\tkzgr@a}%
+  % entries : \tkzgr@m@<i>@<j>
+  \tkzgr@mi\z@
+  \tkzgr@rowsloop#3;\relax;%
+  % vertices
+  \ifGR@mat@placed\else
+    \edef\tkzgr@tmp{\noexpand\tkzgr@Vertices[unit = \cmdGR@mat@unit,
+                    rotation = \cmdGR@mat@rotation,
+                    clockwise = \ifGR@mat@clockwise true\else false\fi]%
+                    {circle}{#2}}%
+    \tkzgr@tmp
+  \fi
+  \tkzgr@centroid
+  % edges and loops
+  \tkzgr@mi\z@
+  \loop\ifnum\tkzgr@mi<\tkzgr@mn
+    \advance\tkzgr@mi\@ne
+    {\tkzgr@mj\z@
+     \loop\ifnum\tkzgr@mj<\tkzgr@mn
+       \advance\tkzgr@mj\@ne
+       \tkzgr@matentry
+     \repeat}%
+  \repeat
+\endgroup}
+% one row : #1 = 0,1,1
+\def\tkzgr@rowsloop#1;{%
+  \ifx\relax#1\else
+    \advance\tkzgr@mi\@ne
+    \tkzgr@mj\z@
+    \@for\tkzgr@a:=#1\do{%
+      \advance\tkzgr@mj\@ne
+      \expandafter\let
+        \csname tkzgr@m@\the\tkzgr@mi @\the\tkzgr@mj\endcsname\tkzgr@a}%
+    \expandafter\tkzgr@rowsloop
+  \fi}
+% \tkzgr@ifnonzero{value}{true}{false}
+\def\tkzgr@ifnonzero#1{%
+  \tkzgr@ifempty{#1}{\@secondoftwo}{%
+    \pgfmathparse{(#1)!=0}%
+    \ifdim\pgfmathresult pt>\z@
+      \expandafter\@firstoftwo
+    \else
+      \expandafter\@secondoftwo
+    \fi}}
+\def\tkzgr@mval#1#2{\csname tkzgr@m@#1@#2\endcsname}
+\def\tkzgr@mname#1{\csname tkzgr@m@name@#1\endcsname}
+% centre of the vertices -> \tkzgr@cx, \tkzgr@cy (pt)
+\def\tkzgr@centroid{%
+  \def\tkzgr@cx{0}\def\tkzgr@cy{0}%
+  \tkzgr@mi\z@
+  \loop\ifnum\tkzgr@mi<\tkzgr@mn
+    \advance\tkzgr@mi\@ne
+    \pgfextractx{\pgf@xa}{\pgfpointanchor{\tkzgr@mname{\the\tkzgr@mi}}{center}}%
+    \pgfextracty{\pgf@ya}{\pgfpointanchor{\tkzgr@mname{\the\tkzgr@mi}}{center}}%
+    \pgfmathsetmacro\tkzgr@cx{\tkzgr@cx+\pgf@xa/\the\tkzgr@mn}%
+    \pgfmathsetmacro\tkzgr@cy{\tkzgr@cy+\pgf@ya/\the\tkzgr@mn}%
+  \repeat}
+% entry (\tkzgr@mi,\tkzgr@mj)
+\def\tkzgr@matentry{%
+  \edef\tkzgr@v{\tkzgr@mval{\the\tkzgr@mi}{\the\tkzgr@mj}}%
+  \tkzgr@ifnonzero{\tkzgr@v}{%
+    \ifnum\tkzgr@mi=\tkzgr@mj
+      \tkzgr@matloop
+    \else
+      \ifGR@mat@directed
+        \tkzgr@matedge
+      \else
+        \ifnum\tkzgr@mi<\tkzgr@mj\tkzgr@matedge\fi
+      \fi
+    \fi}{}}
+\def\tkzgr@matedge{%
+  \def\tkzgr@bend{}%
+  \ifGR@mat@directed
+    \edef\tkzgr@w{\tkzgr@mval{\the\tkzgr@mj}{\the\tkzgr@mi}}%
+    \tkzgr@ifnonzero{\tkzgr@w}{\edef\tkzgr@bend{bend left=\cmdGR@mat@bend}}{}%
+  \fi
+  \edef\tkzgr@tmp{\noexpand\tkzgr@Edge[%
+      \ifGR@mat@directed ->,\fi
+      \ifGR@mat@weighted label = {$\tkzgr@v$},\fi
+      style = {\tkzgr@bend,\unexpanded\expandafter{\cmdGR@mat@style}}]%
+      (\tkzgr@mname{\the\tkzgr@mi})(\tkzgr@mname{\the\tkzgr@mj})}%
+  \tkzgr@tmp}
+% loop directed away from the centre
+\def\tkzgr@matloop{%
+  \edef\tkzgr@n{\tkzgr@mname{\the\tkzgr@mi}}%
+  \pgfextractx{\pgf@xa}{\pgfpointanchor{\tkzgr@n}{center}}%
+  \pgfextracty{\pgf@ya}{\pgfpointanchor{\tkzgr@n}{center}}%
+  \pgfmathsetmacro\tkzgr@dx{\pgf@xa-\tkzgr@cx}%
+  \pgfmathsetmacro\tkzgr@dy{\pgf@ya-\tkzgr@cy}%
+  \pgfmathsetmacro\tkzgr@th{%
+     (abs(\tkzgr@dx)+abs(\tkzgr@dy)<0.01) ? 90 : atan2(\tkzgr@dy,\tkzgr@dx)}%
+  \tkzgr@recordedge{\tkzgr@n}{\tkzgr@n}%
+  \tkzgr@hook@edge{\tkzgr@n}{\tkzgr@n}{\tkzgr@v}{}%
+  \protected@edef\@tempa{\noexpand\draw[EdgeStyle,
+      color = \EdgeColor, line width = \EdgeLineWidth,
+      \ifGR@mat@directed ->, >={\tkzgr@arrowtip},\fi
+      \cmdGR@mat@style]
+    (\tkzgr@n) to[out = \tkzgr@th+35, in = \tkzgr@th-35,
+                  distance = \cmdGR@mat@loopdist]
+    \ifGR@mat@weighted
+      node[fill = \LabelFillColor, text = \LabelTextColor, LabelStyle]
+          {$\tkzgr@v$}%
+    \fi
+    (\tkzgr@n)}%
+  \@tempa;}
+% probabilistic graph : weighted and directed graph from the matrix
+% of transition
+\newcommand*{\grProbMatrix}[3][]{%
+  \tkzGraphFromMatrix[directed,weighted,#1]{#2}{#3}}
+%<--------------------------------------------------------------------------->
+%                       Short names and prefixed names
+%<--------------------------------------------------------------------------->
+% The code uses only \tkzgr@<name>. The prefixed names \tkz<name> are
+% always defined. The short names \<name> are installed
+%  - at the loading of the package, only if they are not defined
+%    (otherwise a warning) ;
+%  - at the beginning of each tikzpicture (local definitions, so a
+%    user definition of \EA, \NO ... is restored after the picture).
+% With the option noshortnames, the short names are never defined.
+\def\tkzgr@shortlist{Vertex,Vertices,Edge,Edges,Loop,%
+                     EA,WE,NO,SO,NOEA,NOWE,SOEA,SOWE}
+\@for\tkzgr@n:=\tkzgr@shortlist\do{%
+  \expandafter\let\csname tkz\tkzgr@n\expandafter\endcsname
+                  \csname tkzgr@\tkzgr@n\endcsname}
+\def\tkzgr@shortnames{%
+  \let\Vertex\tkzgr@Vertex
+  \let\Vertices\tkzgr@Vertices
+  \let\Edge\tkzgr@Edge
+  \let\Edges\tkzgr@Edges
+  \let\Loop\tkzgr@Loop
+  \let\EA\tkzgr@EA
+  \let\WE\tkzgr@WE
+  \let\NO\tkzgr@NO
+  \let\SO\tkzgr@SO
+  \let\NOEA\tkzgr@NOEA
+  \let\NOWE\tkzgr@NOWE
+  \let\SOEA\tkzgr@SOEA
+  \let\SOWE\tkzgr@SOWE}
+\iftkzgr@short
+  \@for\tkzgr@n:=\tkzgr@shortlist\do{%
+    \@ifundefined{\tkzgr@n}{%
+      \expandafter\let\csname\tkzgr@n\expandafter\endcsname
+                      \csname tkzgr@\tkzgr@n\endcsname}{%
+      \PackageWarningNoLine{tkz-graph}{\expandafter\string
+        \csname\tkzgr@n\endcsname\space is already defined. Inside the
+        tikzpicture environments it is replaced by the command of
+        tkz-graph ; outside, use \expandafter\string
+        \csname tkz\tkzgr@n\endcsname}}}
+  \ifdefined\AddToHook
+    \AddToHook{env/tikzpicture/begin}{\tkzgr@shortnames}
+  \else
+    \tikzset{every picture/.append style={%
+      execute at begin picture=\tkzgr@shortnames}}
+  \fi
+\fi
+% new record of the graph at the beginning of each picture
+\ifdefined\AddToHook
+  \AddToHook{env/tikzpicture/begin}{\tkzgr@resetrecord}
+\else
+  \tikzset{every picture/.append style={%
+    execute at begin picture=\tkzgr@resetrecord}}
+\fi
+% options lua and 3d : the files tkz-graph-lua.tex and tkz-graph-3d.tex
+% (parts of tkz-graph, not packages) are read once, at the end of the
+% package ; tkz-berge calls the same macros for its options.
+\def\tkzgr@inputpart#1{%
+  \edef\tkzgr@atcode{\the\catcode`\@}%
+  \catcode`\@=11
+  \IfFileExists{#1}{\input{#1}}{%
+    \PackageError{tkz-graph}{File #1 not found}{It is a part of tkz-graph:
+      install it next to tkz-graph.sty.}}%
+  \catcode`\@=\tkzgr@atcode\relax}
+\def\tkzgr@noluatex{%
+  \PackageError{tkz-graph}{The options lua and 3d need LuaLaTeX}{%
+    Compile with lualatex, or remove the option: tkz-graph alone works
+    with pdfLaTeX. The option is ignored.}%
+  \global\let\tkzgr@loadlua\relax
+  \global\let\tkzgr@loadthreed\relax}
+\def\tkzgr@loadlua{%
+  \ifdefined\directlua
+    \global\let\tkzgr@loadlua\relax
+    \tkzgr@inputpart{tkz-graph-lua.tex}%
+  \else
+    \tkzgr@noluatex
+  \fi}
+\def\tkzgr@loadthreed{%
+  \tkzgr@loadlua
+  \ifdefined\directlua
+    \global\let\tkzgr@loadthreed\relax
+    \tkzgr@inputpart{tkz-graph-3d.tex}%
+  \fi}
+\AtEndOfPackage{%
+  \iftkzgr@threed\tkzgr@loadthreed\else\iftkzgr@lua\tkzgr@loadlua\fi\fi}
+\endinput

@@ -1,0 +1,42 @@
+% tkz-graph-3d.tex -- part of tkz-graph : option 3d
+% Copyright 2026  Alain Matthes
+% SPDX-License-Identifier: LPPL-1.3c
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3c
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   https://www.latex-project.org/lppl.txt
+% and version 1.3c or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status "maintained".
+%
+% The Current Maintainer of this work is Alain Matthes.
+%
+% Read once by \tkzgr@loadthreed (tkz-graph.sty), with the option 3d
+% (LuaLaTeX), after tkz-graph-lua.tex : graphs in space, with the 3D
+% module of tkz-elements (package tkz-elements-3d). tkz-elements computes
+% the projections and the hidden parts ; tkz-graph draws the vertices and
+% the edges. Lua part : tkz_graph_3d.lua (table graph3d). Not a package.
+\RequirePackage{tkz-elements-3d}
+\directlua{require("tkz_graph_3d")}
+% \tkzGraphEdges[options of \Edge]{list A/B,...} ; an empty list gives
+% nothing
+\def\tkzGraphEdges{\@ifnextchar[{\tkz@GraphEdges}{\tkz@GraphEdges[]}}
+\def\tkz@GraphEdges[#1]#2{\edef\tkz@gl{#2}%
+  \ifx\tkz@gl\@empty\else
+    \foreach \tkz@ga/\tkz@gb in \tkz@gl {\Edge[#1](\tkz@ga)(\tkz@gb)}%
+  \fi}
+% \tkzGraphVertices[options of \Vertex]{list A,B,...} : \Vertex[Node,...]
+\def\tkzGraphVertices{\@ifnextchar[{\tkz@GraphVertices}{\tkz@GraphVertices[]}}
+\def\tkz@GraphVertices[#1]#2{\edef\tkz@gl{#2}%
+  \ifx\tkz@gl\@empty\else
+    \foreach \tkz@gv in \tkz@gl {\Vertex[Node,#1]{\tkz@gv}}%
+  \fi}
+% \tkzGraphHighlight[options of \tkzHighlightPath]{list A/B,...}
+\def\tkzGraphHighlight{\@ifnextchar[{\tkz@GraphHighlight}{\tkz@GraphHighlight[]}}
+\def\tkz@GraphHighlight[#1]#2{\edef\tkz@gl{#2}%
+  \ifx\tkz@gl\@empty\else
+    \edef\tkz@tmp{\noexpand\tkzHighlightPath[\unexpanded{#1}]{\tkz@gl}}\tkz@tmp
+  \fi}
+\endinput

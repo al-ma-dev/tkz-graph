@@ -1,0 +1,107 @@
+\section{Graphs and matrices}
+%<-------------------------------------------------------------------------->
+\subsection{The adjacency matrix of a graph: \tkzcname{tkzAdjacencyMatrix}}
+\begin{NewMacroBox}{tkzAdjacencyMatrix}{\oarg{local options}}
+\begin{tabular}{llc}
+\toprule
+Options   & Default  & Definition           \\
+\midrule
+\TOline{directed} {false} {an edge A--B counts only for the entry (A,B)}
+\TOline{order}    {\{\}}  {order of the vertices: \tkzname{order=\{A,B,C\}}}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{Writes the adjacency matrix of the graph drawn in the last
+\tkzname{tikzpicture}. Each picture records its vertices (in order of
+creation) and its edges. The entry $(i,j)$ is the number of edges between
+the $i$-th and the $j$-th vertex; a loop counts $1$. The macro can be used in
+text mode or in math mode.}
+\end{NewMacroBox}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \Vertices[unit=1.5]{circle}{A,B,C,D}
+  \Edges(A,B,C,D,A)
+  \Edge(A)(C)
+  \Loop[dir=EA,dist=1.5cm](A)
+\end{tikzpicture}
+
+$M = \tkzAdjacencyMatrix$
+
+\tkzAdjacencyMatrix[order={D,C,B,A}]
+\end{tkzexample}
+
+With \tkzname{tkz-berge}:
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}[scale=.5]
+  \GraphInit[vstyle=Art]
+  \grCycle[RA=2]{5}
+\end{tikzpicture}
+\quad $C_5\colon \tkzAdjacencyMatrix$
+\end{tkzexample}
+
+\subsection{A graph from a matrix: \tkzcname{tkzGraphFromMatrix}}
+\begin{NewMacroBox}{tkzGraphFromMatrix}{\oarg{local options}\var{list of vertices}\var{matrix}}
+\begin{tabular}{llc}
+\toprule
+Options   & Default  & Definition           \\
+\midrule
+\TOline{placed}        {false}{the vertices already exist}
+\TOline{unit}          {\textbackslash GraphUnit}{radius of the circle}
+\TOline{rotation}      {0}    {angle of the first vertex}
+\TOline{clockwise}     {false}{the vertices turn clockwise}
+\TOline{directed}      {false}{arrows; i$\to$j and j$\to$i are bent}
+\TOline{weighted}      {false}{the entries are written on the edges}
+\TOline{style}         {\{\}} {\TIKZ\ options added to each edge}
+\TOline{bend}          {15}   {angle of the bent edges}
+\TOline{loop distance} {1cm}  {size of the loops}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{The rows of the matrix are separated by \tkzname{;} and the entries
+by \tkzname{,} (use a decimal point). A non-zero entry $(i,j)$ gives an edge
+between the $i$-th and the $j$-th vertex, a non-zero entry on the diagonal a
+loop, directed away from the center of the graph. Without
+\tkzname{placed}, the vertices are placed on a circle, like
+\tkzcname{Vertices}\tkzname{\{circle\}}; the options of the vertices
+(\tkzcname{SetVertexMath}, \tkzcname{GraphInit}\dots) apply. Without
+\tkzname{directed}, only the upper triangle of the matrix is read.}
+\end{NewMacroBox}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \tkzGraphFromMatrix[unit=1.5,rotation=90]%
+    {A,B,C,D}{0,1,1,0;
+              1,0,1,1;
+              1,1,0,1;
+              0,1,1,1}
+\end{tikzpicture}
+\end{tkzexample}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \tkzGraphFromMatrix[directed,weighted,
+                      unit=2]%
+    {1,2,3}{0,4,0; 2,0,7; 5,0,0}
+\end{tikzpicture}
+\end{tkzexample}
+
+\subsubsection{Placed vertices}
+With \tkzname{placed}, the vertices are drawn first, anywhere.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \GraphInit[vstyle=Shade]
+  \Vertices[unit=2]{square}{A,B,C,D}
+  \tkzGraphFromMatrix[placed]%
+    {A,B,C,D}{0,1,1,1;
+              1,0,1,0;
+              1,1,0,1;
+              1,0,1,0}
+\end{tikzpicture}
+\end{tkzexample}
+
+\endinput

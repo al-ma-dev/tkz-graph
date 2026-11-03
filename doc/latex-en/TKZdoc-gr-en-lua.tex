@@ -1,0 +1,425 @@
+\section{Computations with LuaLaTeX: the option \tkzname{lua}}
+%<-------------------------------------------------------------------------->
+\subsection{An optional part of the package}
+With the option \tkzname{lua}, \tkzname{tkz-graph} computes on the graph drawn in a
+\tkzname{tikzpicture}: order, size, degrees, shortest path (Dijkstra's
+algorithm), coloring (Welsh--Powell algorithm), connectivity, Eulerian paths
+and powers of the adjacency matrix. The computations are
+written in Lua (file \tkzname{tkz-graph.lua}), so this option needs
+\tkzname{lualatex}.
+
+\begin{tkzltxexample}[]
+\usepackage[lua]{tkz-graph}  % or \usepackage[lua]{tkz-berge}
+\end{tkzltxexample}
+
+Without the option, \tkzname{tkz-graph} and \tkzname{tkz-berge} keep
+working with \tkzname{pdflatex} and \tkzname{xelatex}. With
+\tkzname{pdflatex}, the option gives the error ``The options lua and 3d need
+LuaLaTeX'' and is ignored.
+
+\subsubsection{The recorded graph}
+Each \tkzname{tikzpicture} starts a new graph. The vertices and the edges
+created with \tkzcname{Vertex}, \tkzcname{Vertices}, \tkzcname{Edge},
+\tkzcname{Edges}, \tkzcname{Loop}, \tkzcname{tkzGraphFromMatrix} and the
+macros of \tkzname{tkz-berge} are recorded. The commands of this section
+can be used in the picture, after the edges, or after the picture, until the
+next \tkzname{tikzpicture}.
+
+\begin{itemize}
+\item The \emph{weight} of an edge is its label when the label is a number:
+\tkzname{3}, \tkzname{\$3\$}, \tkzname{\$0.5\$}, \tkzname{\$0\{,\}5\$} or
+\tkzname{\$\textbackslash frac\{1\}\{2\}\$}. An edge without numeric label
+has the weight $1$. With a decimal comma in the labels, the results are
+written with a decimal comma.
+\item An edge is \emph{oriented} when it has an arrow: the keys
+\tkzname{->}, \tkzname{<-}, \tkzname{<->}, \tkzname{arrow}, or an arrow in
+its option \tkzname{style}. The other edges can be used in both directions,
+unless the option \tkzname{directed} is given.
+\item A loop counts $2$ in the degree of its vertex.
+\end{itemize}
+
+\subsection{Order, size and degrees}
+\begin{NewMacroBox}{tkzGraphDegree}{\var{vertex}}
+\begin{tabular}{lc}
+\toprule
+Commands                                  & Result \\
+\midrule
+\tkzcname{tkzGraphOrder}                  & number of vertices \\
+\tkzcname{tkzGraphSize}                   & number of edges (loops included) \\
+\tkzcname{tkzGraphDegree}\var{vertex}     & degree of the vertex \\
+\tkzcname{tkzGraphInDegree}\var{vertex}   & edges that arrive at the vertex \\
+\tkzcname{tkzGraphOutDegree}\var{vertex}  & edges that leave the vertex \\
+\tkzcname{tkzGraphDegreeSequence}\oarg{sep} & degrees in decreasing order \\
+\tkzcname{tkzGraphDegreeTable}\oarg{options} & table of the degrees \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\begin{tabular}{llc}
+\toprule
+Options of the tables & Default & Definition \\
+\midrule
+\TOline{math} {false} {names of the vertices in math mode}
+\TOline{sort} {true}  {vertices sorted by decreasing degree}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{The first five commands are expandable. For the in- and out-degree,
+an edge without arrow counts in both directions. The separator of the
+sequence is \tkzname{\{, \}} by default.}
+\end{NewMacroBox}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}[scale=.6]
+  \GraphInit[vstyle=Art]
+  \grPetersen[RA=3,RB=1.5]
+\end{tikzpicture}
+\par
+The Petersen graph has \tkzGraphOrder\
+  vertices and \tkzGraphSize\ edges.
+  Degrees: \tkzGraphDegreeSequence.
+\end{tkzexample}
+
+\medskip
+The sum of the degrees is twice the number of edges.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \Vertices[unit=1.5]{circle}{A,B,C,D}
+  \Edges(A,B,C,D,A)
+  \Edge(A)(C)
+  \Loop[dir=EA,dist=1.5cm](A)
+\end{tikzpicture}
+\par
+\tkzGraphDegreeTable
+\par\medskip
+$\deg A = \tkzGraphDegree{A}$,
+  size $= \tkzGraphSize$.
+\end{tkzexample}
+
+\newpage
+\subsection{Shortest path: \tkzcname{tkzGraphDijkstra}}
+\begin{NewMacroBox}{tkzGraphDijkstra}{\oarg{local options}\varp{start}\varp{end}}
+\begin{tabular}{llc}
+\toprule
+Options & Default & Definition \\
+\midrule
+\TOline{color}    {red}    {color of the path}
+\TOline{lw}       {1.6pt}  {line width of the path}
+\TOline{style}    {\{\}}   {\TIKZ\ options of the path}
+\TOline{draw}     {true}   {the path is drawn over the edges}
+\TOline{directed} {false}  {an edge without arrow goes from its first vertex to the second}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{Dijkstra's algorithm. In the picture, the shortest path is drawn
+again over its edges; each edge keeps its own option \tkzname{style}
+(for example a bend). The weights must be positive.}
+
+\medskip
+\begin{tabular}{lc}
+\toprule
+Results & \\
+\midrule
+\tkzcname{tkzGraphPath}        & the vertices of the path: \tkzname{E,B,C,D,S} \\
+\tkzcname{tkzGraphPathLength}  & the length of the path ($\infty$ without path) \\
+\tkzcname{tkzGraphDijkstraTable}\oarg{options} & the table of the steps \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{The options of the table are those of \tkzcname{tkzGraphDegreeTable}.
+In each row, a vertex is marked by \tkzcname{tkzGraphDoneMark} when its
+distance is final; the last column gives the vertex chosen at this step.}
+\end{NewMacroBox}
+
+This is the example of the section ``Dijkstra's algorithm'', without
+the table written by hand.
+
+\begin{tkzexample}[vbox]
+\begin{tikzpicture}
+  \GraphInit[vstyle=Dijkstra]
+  \Vertex{E}
+  \Vertex[x=3,y=2]{A}  \Vertex[x=3,y=-2]{B}
+  \Vertex[x=7,y=-2]{C} \Vertex[x=7,y=2]{D}
+  \Vertex[x=10,y=0]{S}
+  \Edge[label=$3$](E)(A)
+  \Edge[label=$1$](E)(B)
+  \Edge[label=$1$](A)(B)
+  \Edge[label=$3$](B)(C)
+  \Edge[label=$3$,style={pos=.25}](A)(C)
+  \Edge[label=$5$,style={pos=.75}](B)(D)
+  \Edge[label=$4$](A)(D)
+  \Edge[label=$1$](S)(D)
+  \Edge[label=$3$](C)(S)
+  \Edge[label=$1$](C)(D)
+  \tkzGraphDijkstra[style={opacity=.4},lw=2pt](E)(S)
+\end{tikzpicture}
+\par\medskip
+The shortest path is \tkzGraphPath, of length $\tkzGraphPathLength$.
+\par\medskip
+\tkzGraphDijkstraTable[math]
+\end{tkzexample}
+
+\newpage
+\subsubsection{A directed graph}
+All the edges have an arrow: from B, the shortest way to A goes around the
+square. With the option \tkzname{directed}, the edges without arrow would go
+from their first vertex to the second.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \SetGraphUnit{2.5}
+  \Vertices{square}{A,B,C,D}
+  \Edge[->,label=$4$](A)(B)
+  \Edge[->,label=$1$](B)(C)
+  \Edge[->,label=$1$](C)(D)
+  \Edge[->,label=$1$](D)(A)
+  \Edge[->,label=$1$,style={bend left}](A)(C)
+  \tkzGraphDijkstra(B)(A)
+\end{tikzpicture}
+\par
+From B to A: \tkzGraphPath,
+  length $\tkzGraphPathLength$.
+\end{tkzexample}
+
+\subsubsection{A probabilistic graph}
+The weights are read in the labels written by \tkzcname{grProbMatrix}; the
+path follows the bent edges.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \grProbMatrix[unit=2,rotation=90]{A,B,C}%
+    {0.5,0.3,0.2;
+     0.1,0.6,0.3;
+     0.4,0,0.6}
+  \tkzGraphDijkstra[color=blue](B)(A)
+\end{tikzpicture}
+\par
+\tkzGraphPath, $\tkzGraphPathLength$.
+\end{tkzexample}
+
+\newpage
+\subsection{Coloring: \tkzcname{tkzGraphColoring}}
+\begin{NewMacroBox}{tkzGraphColoring}{\oarg{local options}}
+\begin{tabular}{llc}
+\toprule
+Options & Default & Definition \\
+\midrule
+\TOline{colors} {red,blue,\dots} {list of the colors}
+\TOline{draw}   {true}           {the vertices are drawn again with their color}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{Welsh--Powell algorithm: the vertices are sorted by decreasing degree
+(order of creation for equal degrees); the first color goes to the first
+vertex and to each following vertex not adjacent to a vertex of this color,
+and so on. The number of colors is an upper bound of the chromatic number,
+not always the chromatic number. The default list is \tkzname{red, blue,
+green, yellow, orange, cyan, magenta, brown, lime, pink, teal, violet}.}
+
+\medskip
+\begin{tabular}{lc}
+\toprule
+Results & \\
+\midrule
+\tkzcname{tkzGraphColorCount}             & number of colors used \\
+\tkzcname{tkzGraphVertexColor}\var{vertex} & color of the vertex \\
+\tkzcname{tkzGraphColoringTable}\oarg{options} & table: vertex, degree, color \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{A vertex is drawn again with \tkzname{fill} and \tkzname{ball color}
+set to its color, so the shaded styles are also colored. A label inside the
+vertex is written again (its name, or the name in math mode); a label outside
+the vertex is kept.}
+\end{NewMacroBox}
+
+This is the example of the section ``Coloring with the Welsh--Powell
+algorithm'': the colors and the table are computed.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \GraphInit[vstyle=Welsh]
+  \Vertices[unit=2.5]{circle}{A,B,C,D,E,F,G}
+  \Edges(G,E,F,G,B,D,E,C,D,A,C,B,A)
+  \Edges(B,E)
+  \tkzGraphColoring
+\end{tikzpicture}
+\par
+\tkzGraphColoringTable[math]
+\par\medskip
+\tkzGraphColorCount\ colors.
+\end{tkzexample}
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}[scale=.6]
+  \GraphInit[vstyle=Art]
+  \grPetersen[RA=3,RB=1.5]
+  \tkzGraphColoring[colors={orange,
+    teal,violet}]
+\end{tikzpicture}
+\par
+\tkzGraphColorCount\ colors; the vertex
+  a0 is \tkzGraphVertexColor{a0}.
+\end{tkzexample}
+
+\newpage
+\subsection{Connectivity and Eulerian paths}
+\begin{NewMacroBox}{tkzGraphEuler}{\oarg{local options}}
+\begin{tabular}{llc}
+\toprule
+Options & Default & Definition \\
+\midrule
+\TOline{start}    {\{\}}  {first vertex}
+\TOline{numbers}  {false} {the rank of each edge is written on it}
+\TOline{pos}      {.5}    {position of the numbers on the edges}
+\TOline{directed} {false} {an edge without arrow goes from its first vertex to the second}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{Finds an Eulerian path (each edge used once) or an Eulerian cycle
+(a path that ends at its first vertex), with Hierholzer's algorithm; the
+edges are taken in their order of creation. The path is in
+\tkzcname{tkzGraphEulerPath}. For a path, \tkzname{start} must be one of the
+two odd vertices (by default, the first one). The graph is directed when
+all its edges have an arrow, or with the option \tkzname{directed}. The
+numbers use the \TIKZ\ style \tkzname{EulerNumberStyle}.}
+
+\medskip
+\begin{tabular}{lc}
+\toprule
+Commands & Result \\
+\midrule
+\tkzcname{tkzGraphComponents}   & number of connected components \\
+\tkzcname{tkzGraphIfConnected}\var{true}\var{false} & test \\
+\tkzcname{tkzGraphOddVertices}\oarg{sep} & vertices of odd degree \\
+\tkzcname{tkzGraphEulerType}    & \tkzname{cycle}, \tkzname{path} or \tkzname{none} \\
+\tkzcname{tkzGraphIfEulerian}\var{cycle}\var{path}\var{none} & test \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{These commands are expandable. The orientation of the edges is
+ignored for the components. For an Eulerian path, the isolated vertices are
+ignored and the edges must be in one component. Euler's theorem: a connected
+graph has an Eulerian cycle when all its degrees are even, an Eulerian path
+when exactly two degrees are odd.}
+\end{NewMacroBox}
+
+\subsubsection{The envelope}
+The envelope can be drawn without lifting the pencil: two vertices have an
+odd degree, the path goes from one to the other.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \Vertex{A} \Vertex[x=3,y=0]{B}
+  \Vertex[x=3,y=3]{C}
+  \Vertex[x=0,y=3]{D}
+  \Vertex[x=1.5,y=4.5]{E}
+  \Edges(A,B,C,D,A,C,E,D,B)
+  \tkzGraphEuler[numbers,pos=.35]
+\end{tikzpicture}
+\par
+Type: \tkzGraphEulerType; odd vertices:
+  \tkzGraphOddVertices[ and ].
+\par\medskip
+Path: \tkzGraphEulerPath.
+\end{tkzexample}
+
+\subsubsection{The bridges of Königsberg}
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \SetGraphUnit{2.5}
+  \Vertex{N} \SO(N){I} \SO(I){S}
+  \EA(I){E}
+  \Edge[style={bend left}](N)(I)
+  \Edge[style={bend right}](N)(I)
+  \Edge[style={bend left}](I)(S)
+  \Edge[style={bend right}](I)(S)
+  \Edges(N,E,S) \Edge(I)(E)
+\end{tikzpicture}
+\par
+The degrees are \tkzGraphDegreeSequence:
+  \tkzGraphIfEulerian{there is an Eulerian
+  cycle}{there is an Eulerian path}{there
+  is no Eulerian path}.
+\end{tkzexample}
+
+\subsubsection{A cycle in a directed graph}
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \Vertices[unit=2,rotation=90]{circle}{A,B,C,D}
+  \Edges[->](A,B,C,D,A)
+  \Edge[->,style={bend left=20}](A)(C)
+  \Edge[->,style={bend left=20}](C)(A)
+  \tkzGraphEuler[numbers,start=C,pos=.4]
+\end{tikzpicture}
+\par
+\tkzGraphEulerType: \tkzGraphEulerPath.
+\end{tkzexample}
+
+\newpage
+\subsection{Powers of the adjacency matrix}
+\begin{NewMacroBox}{tkzGraphMatrixPower}{\oarg{local options}\var{k}}
+\begin{tabular}{llc}
+\toprule
+Options & Default & Definition \\
+\midrule
+\TOline{directed} {false} {an edge A--B counts only for the entry (A,B)}
+\TOline{order}    {\{\}}  {order of the vertices: \tkzname{order=\{A,B,C\}}}
+\bottomrule
+\end{tabular}
+
+\medskip
+\emph{$M^k$, where $M$ is the matrix given by \tkzcname{tkzAdjacencyMatrix}
+(same options). The entry $(i,j)$ of $M^k$ is the number of walks of length
+$k$ from the $i$-th vertex to the $j$-th.
+\tkzcname{tkzGraphWalks}\oarg{directed}\var{k}\varp{A}\varp{B} gives one entry;
+it is expandable.}
+\end{NewMacroBox}
+
+The directed graph $G_2$ of the exercise ``North America, June 2004'' (see
+the section \ref{anm04}): the matrix $M^3$ of the statement is computed.
+
+\begin{tkzexample}[latex=7cm,small]
+\begin{tikzpicture}
+  \tkzGraphFromMatrix[directed,unit=2.2,
+                      rotation=90]%
+    {A,B,C,D,E}%
+    {0,1,1,1,0; 1,0,1,0,1; 1,1,0,0,1;
+     0,1,0,0,1; 1,1,0,1,0}
+\end{tikzpicture}
+\par
+$M = \tkzAdjacencyMatrix[directed]$
+\par\medskip
+$M^3 = \tkzGraphMatrixPower[directed]{3}$
+\par\medskip
+Walks of length 3 from A to B:
+  \tkzGraphWalks[directed]{3}(A)(B).
+\end{tkzexample}
+
+\subsection{Texts of the tables}
+The texts of the tables are given by macros; they can be redefined with
+\tkzcname{renewcommand}. With \tkzname{booktabs}, the tables use its rules.
+
+\medskip
+\begin{tabular}{lc}
+\toprule
+Macros & Default \\
+\midrule
+\tkzcname{tkzGraphVertexText}  & Vertex \\
+\tkzcname{tkzGraphDegreeText}  & Degree \\
+\tkzcname{tkzGraphColorText}   & Color \\
+\tkzcname{tkzGraphChoiceText}  & Choice \\
+\tkzcname{tkzGraphDoneMark}    & \tkzGraphDoneMark \\
+\tkzcname{tkzGraphColorSwatch}\var{color} & \tkzGraphColorSwatch{red} \\
+\bottomrule
+\end{tabular}
+
+\endinput
